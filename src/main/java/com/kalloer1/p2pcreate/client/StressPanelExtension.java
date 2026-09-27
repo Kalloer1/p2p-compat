@@ -6,14 +6,16 @@ import java.util.List;
 import org.jetbrains.annotations.Nullable;
 
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.kalloer1.p2p.Lang;
 import com.kalloer1.p2p.api.ChannelScreenExtension;
 import com.kalloer1.p2p.api.DetailContext;
 import com.kalloer1.p2p.channel.Channel;
 import com.kalloer1.p2p.channel.Member;
 import com.kalloer1.p2p.channel.Role;
-import com.kalloer1.p2p.Lang;
 import com.kalloer1.p2p.client.screen.ChannelScreen;
 import com.kalloer1.p2p.client.screen.NameInputScreen;
+import com.kalloer1.p2p.client.screen.P2PTheme;
+import com.kalloer1.p2p.network.ChannelActionC2SPacket;
 import com.kalloer1.p2pcreate.bridge.KineticBridgeState;
 import com.kalloer1.p2pcreate.bridge.KineticEndpoints;
 import com.kalloer1.p2pcreate.mixin.KineticBlockEntityAccessor;
@@ -38,12 +40,23 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 /**
  * Create 应力频道的详情面板扩展（本体 1.1.0 P3 缝，取代旧 ChannelScreenMixin）。
- * replacesDefaultPanel=true：右侧详情区整体由本类接管，通用速率/节流控件与默认端点表由本体隐藏。
+ * replacesDefaultPanel=true：本体在接管态不绘制任何右侧内容，本类独占 {@link DetailContext}
+ * 给出的 244x160 帧（1.2.0 几何契约，规格 §4），按「状态卡 + 端点列表卡」两段式重绘。
  * 纯客户端类：只在 CompatCreate.registerClient()（宿主 create 在场时）里实例化。
+ *
+ * <p>绘制全部走本体公开的主题层 {@link P2PTheme}（旧私有 bevel 与 0xFF252525 系硬编码色已删除）；
+ * 应力单位取自 {@code p2p.unit.create_stress}，不再硬编码 " SU"。
  */
 public final class StressPanelExtension implements ChannelScreenExtension {
-    private static final int BODY_TOP_OFF = 84;
-    private static final int PANEL_BOTTOM_OFF = 182;
+    /** 状态卡高（标题 / 两列读数 / 分隔线 / 状态 pill）。 */
+    private static final int STATUS_H = 56;
+    /** 两段卡片间距（规格 §2 的 8pt 网格在 160 帧内按 4 细分，保证列表卡底边与帧底对齐）。 */
+    private static final int GAP = 4;
+    /** 列表卡内的分区头高。 */
+    private static final int HEAD_H = 14;
+    /** 列表卡内的脚注高。 */
+    private static final int FOOT_H = 12;
+    private static final int ROW_H = DetailContext.ROW_H;
 
     private int memberScroll;
     private final List<ActionHit> actionHits = new ArrayList<>();
@@ -51,6 +64,14 @@ public final class StressPanelExtension implements ChannelScreenExtension {
     // callbacks lack a channel parameter, so the last drawn one is captured here.
     @Nullable
     private Channel rendered;
+
+    private record ActionHit(int memberIndex, ActionKind kind, int x, int y, int w, int h) {
+        boolean contains(double mx, double my) {
+            return mx >= x && mx < x + w && my >= y && my < y + h;
+        }
+    }
+
+    private enum ActionKind { RPM, DIRECTION, PRIORITY, DELETE, ROLE }
 
     @Override
     public boolean replacesDefaultPanel(@Nullable Channel channel) {
@@ -67,11 +88,7 @@ public final class StressPanelExtension implements ChannelScreenExtension {
     public boolean mouseClicked(DetailContext ctx, double mouseX, double mouseY, int button) {
         Channel channel = rendered;
         if (channel == null) return false;
-        int rx = ctx.rightAreaX;
-        int rw = ctx.rightAreaWidth;
-        int bodyTop = ctx.topPos + BODY_TOP_OFF;
-        int bodyBottom = ctx.topPos + PANEL_BOTTOM_OFF;
-        if (mouseX < rx || mouseX >= rx + rw || mouseY < bodyTop || mouseY >= bodyBottom) return false;
+        if (!inFrame(ctx, mouseX, mouseY)) return false;
         // Every button inside the stress table is consumed: the generic role/face/delete
         // controls hidden underneath must never react to right- or middle-clicks.
         if (button != 0) return true;
@@ -105,10 +122,9 @@ public final class StressPanelExtension implements ChannelScreenExtension {
                                         String.valueOf(member.priority), 2, channel.id, member.key()));
                     }
                     case DELETE -> ctx.sendMemberAction(channel.id,
-                            com.kalloer1.p2p.network.ChannelActionC2SPacket.Action.REMOVE_MEMBER,
-                            0, member.key());
+                            ChannelActionC2SPacket.Action.REMOVE_MEMBER, 0, member.key());
                     case ROLE -> ctx.sendMemberAction(channel.id,
-                            com.kalloer1.p2p.network.ChannelActionC2SPacket.Action.SET_ROLE,
+                            ChannelActionC2SPacket.Action.SET_ROLE,
                             member.role == Role.INPUT ? Role.OUTPUT.ordinal() : Role.INPUT.ordinal(),
                             member.key());
                 }
@@ -125,27 +141,27 @@ public final class StressPanelExtension implements ChannelScreenExtension {
     public boolean mouseScrolled(DetailContext ctx, double mouseX, double mouseY, double scrollX, double scrollY) {
         Channel channel = rendered;
         if (channel == null) return false;
-        int rx = ctx.rightAreaX;
-        int rw = ctx.rightAreaWidth;
-        if (mouseX < rx || mouseX >= rx + rw || mouseY < ctx.topPos + BODY_TOP_OFF
-                || mouseY >= ctx.topPos + PANEL_BOTTOM_OFF) return false;
-
-        int total = sectionHeight(channel);
-        int viewport = 98;
-        int max = Math.max(0, total - viewport);
-        memberScroll = Math.max(0, Math.min(max, memberScroll - (int) Math.signum(scrollY) * 18));
+        if (!inFrame(ctx, mouseX, mouseY)) return false;
+        memberScroll = clampScroll(memberScroll - (int) Math.signum(scrollY) * ROW_H, channel, ctx);
         return true;
     }
 
-    private void drawStressPanel(DetailContext ctx, GuiGraphics graphics, Channel channel) {
-        int rx = ctx.rightAreaX;
-        int rw = ctx.rightAreaWidth;
-        int panelBottom = ctx.topPos + PANEL_BOTTOM_OFF;
-        Font font = ctx.font;
+    private boolean inFrame(DetailContext ctx, double mouseX, double mouseY) {
+        return mouseX >= ctx.frameX() && mouseX < ctx.frameX() + ctx.frameWidth()
+                && mouseY >= ctx.frameTop() && mouseY < ctx.frameBottom();
+    }
 
-        // Cover the region where P2P would have drawn generic rate/throttle labels and the endpoint table.
-        graphics.fill(rx, ctx.topPos + 48, rx + rw, panelBottom, 0xFF252525);
-        inset(graphics, rx, ctx.topPos + 48, rw, panelBottom - (ctx.topPos + 48));
+    private void drawStressPanel(DetailContext ctx, GuiGraphics graphics, Channel channel) {
+        actionHits.clear();
+        drawStatusCard(ctx, graphics, channel);
+        drawEndpointsCard(ctx, graphics, channel);
+    }
+
+    private void drawStatusCard(DetailContext ctx, GuiGraphics graphics, Channel channel) {
+        int fx = ctx.frameX();
+        int fw = ctx.frameWidth();
+        int fy = ctx.frameTop();
+        Font font = ctx.font;
 
         List<Member> inputs = members(channel, Role.INPUT);
         List<Member> outputs = members(channel, Role.OUTPUT);
@@ -167,64 +183,92 @@ public final class StressPanelExtension implements ChannelScreenExtension {
                     KineticBridgeState.maxRotationSpeed()).paused()) anyPausedOutput = true;
         }
 
-        graphics.drawString(font, Component.translatable("p2pcreate.gui.stress_status"),
-                rx + 5, ctx.topPos + 52, 0xFFE7C27D, false);
+        P2PTheme.card(graphics, fx, fy, fw, STATUS_H);
+        P2PTheme.drawStringBold(graphics, font, Component.translatable("p2pcreate.gui.stress_status"),
+                fx + P2PTheme.PAD, fy + 6, P2PTheme.TEXT_PRIMARY);
+
         graphics.drawString(font, Component.translatable("p2pcreate.gui.input_available",
                         formatStress(inputSupply, missingInput)),
-                rx + 5, ctx.topPos + 64, 0xFFE0E0E0, false);
+                fx + P2PTheme.PAD, fy + 19, P2PTheme.TEXT_PRIMARY, false);
         graphics.drawString(font, Component.translatable("p2pcreate.gui.output_demand",
                         formatStress(outputDemand, missingOutput)),
-                rx + 116, ctx.topPos + 64, 0xFFE0E0E0, false);
+                fx + 128, fy + 19, P2PTheme.TEXT_PRIMARY, false);
+
+        P2PTheme.separator(graphics, fx, fy + 32, fw);
+
         String statusKey;
-        int statusColor = 0xFFFFC66D;
-        if (inputs.isEmpty() || outputs.isEmpty()) statusKey = "p2pcreate.gui.status.missing_io";
-        else if (missingInput || missingOutput) statusKey = "p2pcreate.gui.status.unloaded";
-        else if (anyPausedOutput) statusKey = "p2pcreate.gui.status.paused";
-        else { statusKey = "p2pcreate.gui.status.connected"; statusColor = 0xFF8FD18F; }
-        graphics.drawString(font, Component.translatable("p2pcreate.gui.status",
-                Component.translatable(statusKey)), rx + 5, ctx.topPos + 76, statusColor, false);
+        int statusColor;
+        if (inputs.isEmpty() || outputs.isEmpty()) { statusKey = "p2pcreate.gui.status.missing_io"; statusColor = P2PTheme.WARNING; }
+        else if (missingInput || missingOutput) { statusKey = "p2pcreate.gui.status.unloaded"; statusColor = P2PTheme.WARNING; }
+        else if (anyPausedOutput) { statusKey = "p2pcreate.gui.status.paused"; statusColor = P2PTheme.WARNING; }
+        else { statusKey = "p2pcreate.gui.status.connected"; statusColor = P2PTheme.SUCCESS; }
+        Component status = Component.translatable("p2pcreate.gui.status", Component.translatable(statusKey));
+        int sw = font.width(status) + 10;
+        P2PTheme.chip(graphics, fx + (fw - sw) / 2, fy + 38, sw, P2PTheme.PILL_H, statusColor);
+        P2PTheme.drawCentered(graphics, font, status, fx + (fw - sw) / 2, fy + 40, sw, 0xFFFFFFFF);
+    }
 
-        int listTop = ctx.topPos + BODY_TOP_OFF;
-        int listBottom = panelBottom - 1;
-        graphics.fill(rx + 1, listTop, rx + rw - 1, listBottom, 0xFF202020);
-        actionHits.clear();
-        memberScroll = Math.max(0, Math.min(memberScroll, Math.max(0, sectionHeight(channel) - 98)));
+    private void drawEndpointsCard(DetailContext ctx, GuiGraphics graphics, Channel channel) {
+        int fx = ctx.frameX();
+        int fw = ctx.frameWidth();
+        int listTop = ctx.frameTop() + STATUS_H + GAP;
+        int listBottom = ctx.frameBottom();
+        Font font = ctx.font;
 
-        graphics.enableScissor(rx + 1, listTop + 1, rx + rw - 1, listBottom);
-        int y = listTop - memberScroll;
+        P2PTheme.card(graphics, fx, listTop, fw, listBottom - listTop);
+        int rowsTop = listTop + HEAD_H;
+        int rowsBottom = listBottom - FOOT_H;
+        P2PTheme.drawStringBold(graphics, font,
+                Component.translatable("p2pcreate.gui.endpoints", channel.members.size()),
+                fx + P2PTheme.PAD, listTop + 3, P2PTheme.TEXT_PRIMARY);
+
+        memberScroll = clampScroll(memberScroll, channel, ctx);
+        graphics.enableScissor(fx + 1, rowsTop, fx + fw - 1, rowsBottom);
+        int y = rowsTop - memberScroll;
         for (int index = 0; index < channel.members.size(); index++) {
             Member member = channel.members.get(index);
             if (member.role != Role.INPUT) continue;
-            drawMemberRow(ctx, graphics, channel, member, index, y, false);
-            y += 18;
+            drawMemberRow(ctx, graphics, channel, member, index, y, rowsTop, rowsBottom, false);
+            y += ROW_H;
         }
         for (int index = 0; index < channel.members.size(); index++) {
             Member member = channel.members.get(index);
             if (member.role != Role.OUTPUT) continue;
-            drawMemberRow(ctx, graphics, channel, member, index, y, true);
-            y += 18;
+            drawMemberRow(ctx, graphics, channel, member, index, y, rowsTop, rowsBottom, true);
+            y += ROW_H;
         }
-        if (inputs.isEmpty() && outputs.isEmpty()) {
+        if (channel.members.isEmpty()) {
             graphics.drawString(font, Component.translatable("p2pcreate.gui.no_endpoints"),
-                    rx + 5, listTop + 25, 0xFF8B8B8B, false);
+                    fx + P2PTheme.PAD, rowsTop + 6, P2PTheme.TEXT_SECOND, false);
         }
         graphics.disableScissor();
+        graphics.drawString(font, Component.translatable("p2pcreate.gui.rpm_hint"),
+                fx + P2PTheme.PAD, rowsBottom + 2, P2PTheme.TEXT_TERT, false);
     }
 
     private void drawMemberRow(DetailContext ctx, GuiGraphics graphics, Channel channel, Member member,
-            int memberIndex, int y, boolean output) {
-        int rx = ctx.rightAreaX;
-        int rw = ctx.rightAreaWidth;
-        if (y + 18 <= ctx.topPos + BODY_TOP_OFF || y >= ctx.topPos + 181) return;
-        graphics.fill(rx + 2, y, rx + rw - 2, y + 17, 0xFF2B2B2B);
-
-        ItemStack icon = endpointIcon(ctx, member);
-        if (!icon.isEmpty()) graphics.renderItem(icon, rx + 2, y + 1);
-        button(ctx, graphics, rx + 20, y + 2, 22, 14,
-                Component.literal(output ? "OUT" : "IN"), output ? 0xFF3A7AD9 : 0xFFD93A3A);
+            int memberIndex, int y, int rowsTop, int rowsBottom, boolean output) {
+        int fx = ctx.frameX();
         Font font = ctx.font;
-        String key = trimWidth(font, shortKey(ctx, member), output ? 48 : 80);
-        graphics.drawString(font, Component.literal(key), rx + 44, y + 5, 0xFFE0E0E0, false);
+        if (y + ROW_H <= rowsTop || y >= rowsBottom) return;
+        graphics.fill(fx + P2PTheme.PAD, y + ROW_H, fx + ctx.frameWidth() - P2PTheme.PAD, y + ROW_H + 1,
+                P2PTheme.SEPARATOR);
+
+        int x0 = fx + P2PTheme.PAD;
+        int right = x0 + 228;   // 帧内右边界（244 - 2*8）
+        P2PTheme.drawRoundRect(graphics, x0, y + 1, P2PTheme.WELL, P2PTheme.WELL, P2PTheme.R_SLOT,
+                P2PTheme.FIELD_BG);
+        ItemStack icon = endpointIcon(ctx, member);
+        if (!icon.isEmpty()) graphics.renderItem(icon, x0, y + 1);
+
+        int badgeX = x0 + 18;
+        P2PTheme.roleBadge(graphics, badgeX, y + 3, !output);
+        P2PTheme.drawCentered(graphics, font, Component.literal(output ? "OUT" : "IN"),
+                badgeX, y + 5, P2PTheme.BADGE_W, 0xFFFFFFFF);
+        actionHits.add(new ActionHit(memberIndex, ActionKind.ROLE, badgeX, y + 2, P2PTheme.BADGE_W, ROW_H - 4));
+
+        String key = trimWidth(font, shortKey(ctx, member), 46);
+        graphics.drawString(font, Component.literal(key), x0 + 44, y + 5, P2PTheme.TEXT_PRIMARY, false);
 
         // Same predicate the server bridge uses to resolve endpoints: a row that fails it can
         // never transfer, so surface why (bound to a non-kinetic block, unloaded, …) on the row.
@@ -232,47 +276,54 @@ public final class StressPanelExtension implements ChannelScreenExtension {
 
         if (!output) {
             if (warning != null) {
-                graphics.drawString(font, Component.literal("!" + warning.getString()),
-                        rx + 126, y + 5, 0xFFFF6D6D, false);
+                drawRightAligned(graphics, font, Component.literal("!" + warning.getString()),
+                        right - 22, y + 5, P2PTheme.DANGER);
             } else {
                 float supplied = inputSupply(ctx, member);
-                String value = supplied < 0 ? "—" : formatNumber(supplied) + " SU";
-                graphics.drawString(font, Component.translatable("p2pcreate.gui.supply", value),
-                        rx + 126, y + 5, 0xFFE7C27D, false);
+                drawRightAligned(graphics, font,
+                        Component.translatable("p2pcreate.gui.supply", formatStress(supplied, supplied < 0)),
+                        right - 22, y + 5, P2PTheme.WARNING);
             }
-            button(ctx, graphics, rx + rw - 20, y + 2, 16, 14, Component.literal("×"), 0xFF6C3030);
-            actionHits.add(new ActionHit(memberIndex, ActionKind.ROLE, rx + 20, y + 2, 22, 14));
-            actionHits.add(new ActionHit(memberIndex, ActionKind.DELETE, rx + rw - 20, y + 2, 16, 14));
         } else {
             var config = KineticBridgeState.getClientOutputConfig(channel.id, member,
                     KineticBridgeState.maxRotationSpeed());
             boolean marked = warning != null || config.paused();
-            graphics.drawString(font, Component.literal(Math.round(config.rpm()) + " RPM"),
-                    rx + 94, y + 5, marked ? 0xFF8B8B8B : 0xFFE7C27D, false);
+            graphics.drawString(font, Component.literal(Math.round(config.rpm()) + " " + unit()),
+                    x0 + 94, y + 5, marked ? P2PTheme.TEXT_TERT : P2PTheme.WARNING, false);
             Component dirLabel = warning != null ? warning : config.paused()
                     ? reasonLabel(config.reason())
                     : Component.translatable(config.reverse()
                             ? "p2pcreate.gui.counter_clockwise" : "p2pcreate.gui.clockwise");
             // The direction cell doubles as the toggle control and carries the row's warning /
             // pause reason when the output cannot run.
-            button(ctx, graphics, rx + 128, y + 2, 34, 14,
-                    Component.literal((marked ? "!" : "") + trimWidth(font, dirLabel.getString(), marked ? 26 : 30)),
-                    marked ? 0xFF6C3030 : 0xFF3D3530);
+            int dirW = 36;
+            P2PTheme.pillBackground(graphics, x0 + 126, y + 2, dirW, P2PTheme.PILL_H, false, true);
+            P2PTheme.drawCentered(graphics, font,
+                    Component.literal(trimWidth(font, (marked ? "!" : "") + dirLabel.getString(), dirW - 4)),
+                    x0 + 126, y + 4, dirW, marked ? P2PTheme.WARNING : P2PTheme.TEXT_PRIMARY);
+            actionHits.add(new ActionHit(memberIndex, ActionKind.DIRECTION, x0 + 126, y + 2, dirW, P2PTheme.PILL_H));
             if (channel.distribution == Channel.Distribution.PRIORITY) {
                 // Keep the per-output priority editor compact so RPM, direction, and delete
                 // remain available in the same row.
-                button(ctx, graphics, rx + 164, y + 2, 16, 14,
-                        Component.literal("P" + member.priority), 0xFF3D3530);
-                actionHits.add(new ActionHit(memberIndex, ActionKind.PRIORITY, rx + 164, y + 2, 16, 14));
+                int pW = 16;
+                P2PTheme.pillBackground(graphics, x0 + 164, y + 2, pW, P2PTheme.PILL_H, false, true);
+                P2PTheme.drawCentered(graphics, font, Component.literal("P" + member.priority),
+                        x0 + 164, y + 4, pW, P2PTheme.TEXT_PRIMARY);
+                actionHits.add(new ActionHit(memberIndex, ActionKind.PRIORITY, x0 + 164, y + 2, pW, P2PTheme.PILL_H));
             }
-            button(ctx, graphics, rx + 182, y + 2, 26, 14,
-                    Component.translatable("p2pcreate.gui.rpm"), 0xFF3D3530);
-            button(ctx, graphics, rx + rw - 15, y + 2, 13, 14, Component.literal("×"), 0xFF6C3030);
-            actionHits.add(new ActionHit(memberIndex, ActionKind.ROLE, rx + 20, y + 2, 22, 14));
-            actionHits.add(new ActionHit(memberIndex, ActionKind.DIRECTION, rx + 128, y + 2, 34, 14));
-            actionHits.add(new ActionHit(memberIndex, ActionKind.RPM, rx + 182, y + 2, 26, 14));
-            actionHits.add(new ActionHit(memberIndex, ActionKind.DELETE, rx + rw - 15, y + 2, 13, 14));
+            int rpmW = 26;
+            P2PTheme.chip(graphics, x0 + 182, y + 2, rpmW, P2PTheme.PILL_H, P2PTheme.TINT);
+            P2PTheme.drawCentered(graphics, font, Component.translatable("p2pcreate.gui.rpm"),
+                    x0 + 182, y + 4, rpmW, 0xFFFFFFFF);
+            actionHits.add(new ActionHit(memberIndex, ActionKind.RPM, x0 + 182, y + 2, rpmW, P2PTheme.PILL_H));
         }
+        P2PTheme.deleteCross(graphics, right - 14, y + 2, false);
+        actionHits.add(new ActionHit(memberIndex, ActionKind.DELETE, right - 14, y + 2, P2PTheme.CIRCLE,
+                P2PTheme.CIRCLE));
+    }
+
+    private void drawRightAligned(GuiGraphics graphics, Font font, Component text, int rightEdge, int y, int color) {
+        graphics.drawString(font, text, rightEdge - font.width(text), y, color, false);
     }
 
     /** Mirrors the base screen's icon resolution: live pick-stack (with BE NBT) first, bound blockId fallback. */
@@ -326,12 +377,17 @@ public final class StressPanelExtension implements ChannelScreenExtension {
         return null;
     }
 
+    private int clampScroll(int scroll, Channel channel, DetailContext ctx) {
+        int viewport = ctx.frameBottom() - ctx.frameTop() - STATUS_H - GAP - HEAD_H - FOOT_H;
+        return Math.max(0, Math.min(Math.max(0, sectionHeight(channel) - viewport), scroll));
+    }
+
     private int sectionHeight(Channel channel) {
         int rows = 0;
         for (Member member : channel.members) {
             if (member.role == Role.INPUT || member.role == Role.OUTPUT) rows++;
         }
-        return rows * 18;
+        return rows * ROW_H;
     }
 
     private float inputSupply(DetailContext ctx, Member member) {
@@ -358,8 +414,14 @@ public final class StressPanelExtension implements ChannelScreenExtension {
         return KineticEndpoints.firstKinetic(level, member);
     }
 
+    /** 应力单位（{@code p2p.unit.create_stress}）；没有配键时退化为空串，只显数值。 */
+    private String unit() {
+        String unit = Lang.unitOf("create:stress");
+        return unit.isEmpty() ? "" : " " + unit;
+    }
+
     private String formatStress(float value, boolean missing) {
-        return missing ? "—" : formatNumber(value) + " SU";
+        return missing ? "—" : formatNumber(value) + unit();
     }
 
     private String formatNumber(float value) {
@@ -406,22 +468,5 @@ public final class StressPanelExtension implements ChannelScreenExtension {
         List<Member> result = new ArrayList<>();
         for (Member member : channel.members) if (member.role == role) result.add(member);
         return result;
-    }
-
-    private void button(DetailContext ctx, GuiGraphics graphics, int x, int y, int width, int height,
-            Component label, int color) {
-        String text = label.getString();
-        Font font = ctx.font;
-        graphics.fill(x, y, x + width, y + height, color);
-        graphics.fill(x, y, x + width, y + 1, 0xFF6E625A);
-        graphics.drawString(font, label, x + Math.max(2, (width - font.width(text)) / 2),
-                y + 3, 0xFFE7E0D9, false);
-    }
-
-    private void inset(GuiGraphics graphics, int x, int y, int width, int height) {
-        graphics.fill(x, y, x + width, y + 1, 0xFF6E625A);
-        graphics.fill(x, y, x + 1, y + height, 0xFF6E625A);
-        graphics.fill(x, y + height - 1, x + width, y + height, 0xFF171717);
-        graphics.fill(x + width - 1, y, x + width, y + height, 0xFF171717);
     }
 }

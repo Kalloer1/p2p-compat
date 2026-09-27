@@ -8,6 +8,8 @@ import org.jetbrains.annotations.Nullable;
 import com.kalloer1.p2p.api.FilterPageContext;
 import com.kalloer1.p2p.api.FilterPageExtension;
 import com.kalloer1.p2p.channel.Filter;
+import com.kalloer1.p2p.client.screen.P2PFlatButton;
+import com.kalloer1.p2p.client.screen.P2PTheme;
 import com.kalloer1.p2pmekanism.CompatMekanism;
 import mekanism.api.MekanismAPI;
 import mekanism.api.chemical.Chemical;
@@ -66,12 +68,14 @@ public final class GasFilterPage implements FilterPageExtension {
 
     @Override
     public void onInit(FilterPageContext ctx) {
-        Rect2i area = ctx.markerGridArea();
-        // 本体 init() 每次 resize 重进并 clearControls 重建，扩展控件随之重建（幂等约定）。
-        Button modeButton = Button.builder(Component.translatable(modeLabel()), button -> {
-            mode = mode == Filter.Mode.WHITELIST ? Filter.Mode.BLACKLIST : Filter.Mode.WHITELIST;
-            button.setMessage(Component.translatable(modeLabel()));
-        }).bounds(area.getX(), area.getY() + 102, 158, 16).build();
+        // 规格 §4：模式钮与本体「模式」行同行同规格（P2PFlatButton 默认 pill 样式），
+        // 几何由本体给出，不再写死 markerGridArea 相对偏移。
+        Rect2i row = ctx.modeRowArea();
+        P2PFlatButton modeButton = new P2PFlatButton(Button.builder(
+                Component.translatable(modeLabel()), button -> {
+                    mode = mode == Filter.Mode.WHITELIST ? Filter.Mode.BLACKLIST : Filter.Mode.WHITELIST;
+                    button.setMessage(Component.translatable(modeLabel()));
+                }).bounds(row.getX(), row.getY(), row.getWidth(), row.getHeight()));
         ctx.addWidget(modeButton);
     }
 
@@ -120,20 +124,20 @@ public final class GasFilterPage implements FilterPageExtension {
     @Override
     public void renderOverlay(FilterPageContext ctx, GuiGraphics graphics, int mouseX, int mouseY) {
         Rect2i area = ctx.markerGridArea();
+        int pitch = ctx.markerPitch();
         int count = Math.min(chemicalStacks.size(), 27);
         for (int i = 0; i < count; i++) {
-            int x = area.getX() + (i % 9) * 18 + 1;
-            int y = area.getY() + (i / 9) * 18 + 1;
+            int x = area.getX() + (i % 9) * pitch + 1;
+            int y = area.getY() + (i / 9) * pitch + 1;
             ChemicalStack stack = chemicalStacks.get(i);
             ResourceLocation id = stack.getTypeRegistryName();
             int color = 0xFF404040 | (id == null ? 0 : Math.abs(id.hashCode()) % 0x808080);
-            graphics.fill(x, y, x + 16, y + 16, color);
-            graphics.fill(x, y, x + 16, y + 1, 0x40FFFFFF);
-            graphics.fill(x, y + 15, x + 16, y + 16, 0x40000000);
+            // 规格 §4：16×16 圆角 2 化学品色块（色派生规则不变），替代旧方角 fill+描边。
+            P2PTheme.drawRoundRect(graphics, x, y, 16, 16, P2PTheme.R_SLOT, color);
         }
         if (mouseX >= area.getX() && mouseX < area.getX() + area.getWidth()
                 && mouseY >= area.getY() && mouseY < area.getY() + area.getHeight()) {
-            int index = ((mouseY - area.getY()) / 18) * 9 + ((mouseX - area.getX()) / 18);
+            int index = ((mouseY - area.getY()) / pitch) * 9 + ((mouseX - area.getX()) / pitch);
             if (index >= 0 && index < chemicalStacks.size()) {
                 graphics.renderTooltip(Minecraft.getInstance().font,
                         chemicalStacks.get(index).getTextComponent(), mouseX, mouseY);

@@ -27,7 +27,7 @@ side = "BOTH"
 [[dependencies.p2p_compat]]
 modId = "p2p"
 type = "required"
-versionRange = "[1.1.0,)"
+versionRange = "[1.2.0,)"
 ordering = "AFTER"
 side = "BOTH"
 

@@ -10,6 +10,7 @@ import com.kalloer1.p2p.api.DetailContext;
 import com.kalloer1.p2p.channel.Channel;
 import com.kalloer1.p2p.channel.Member;
 import com.kalloer1.p2p.channel.Role;
+import com.kalloer1.p2p.client.screen.P2PTheme;
 import com.kalloer1.p2p.network.ChannelActionC2SPacket;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -28,10 +29,21 @@ import net.minecraft.world.level.block.Blocks;
  * <p>BridgeManager 是服务端权威、无同步包，客户端面板按同一选取规则（第一输入 +
  * 第一输出，见 BridgeManager.syncChannel）从 Channel 成员推导状态，不直连服务端数据。
  * 纯客户端类：只在 CompatAE2.registerClient()（宿主 ae2 在场时）注册。
+ *
+ * <p>1.2.0 iOS 几何契约：独占 {@link DetailContext} 的 244x160 接管帧，按
+ * 「状态卡 + 端点列表卡」两段式重绘；绘制全部走本体公开主题层 {@link P2PTheme}
+ * （旧 0xFF252525 系暗色与私有 bevel 已删除），面名使用自有键 {@code p2p_compat.ae2.face.*}。
  */
 public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
-    private static final int BODY_TOP_OFF = 84;
-    private static final int PANEL_BOTTOM_OFF = 182;
+    /** 状态卡高（标题 / 端点计数 / 分隔线 / 状态 pill），与 Stress 面板一致。 */
+    private static final int STATUS_H = 56;
+    /** 两段卡片间距。 */
+    private static final int GAP = 4;
+    /** 列表卡内的分区头高。 */
+    private static final int HEAD_H = 14;
+    /** 列表卡内的脚注高（承载“仅第一对参与桥接”提示）。 */
+    private static final int FOOT_H = 12;
+    private static final int ROW_H = DetailContext.ROW_H;
 
     private int memberScroll;
     private final List<RowHit> hits = new ArrayList<>();
@@ -59,11 +71,9 @@ public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
     public boolean mouseClicked(DetailContext ctx, double mouseX, double mouseY, int button) {
         Channel channel = rendered;
         if (channel == null) return false;
-        int rx = ctx.rightAreaX;
-        int rw = ctx.rightAreaWidth;
-        int bodyTop = ctx.topPos + BODY_TOP_OFF;
-        int bodyBottom = ctx.topPos + PANEL_BOTTOM_OFF;
-        if (mouseX < rx || mouseX >= rx + rw || mouseY < bodyTop || mouseY >= bodyBottom) return false;
+        if (!inFrame(ctx, mouseX, mouseY)) return false;
+        // Every control inside the replaced panel is consumed: the generic role/face/delete
+        // handlers underneath must never react, including right- and middle-clicks.
         if (button != 0) return true;
         for (RowHit hit : hits) {
             if (!hit.contains(mouseX, mouseY)) continue;
@@ -85,87 +95,119 @@ public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
     public boolean mouseScrolled(DetailContext ctx, double mouseX, double mouseY, double scrollX, double scrollY) {
         Channel channel = rendered;
         if (channel == null) return false;
-        int rx = ctx.rightAreaX;
-        int rw = ctx.rightAreaWidth;
-        if (mouseX < rx || mouseX >= rx + rw || mouseY < ctx.topPos + BODY_TOP_OFF
-                || mouseY >= ctx.topPos + PANEL_BOTTOM_OFF) return false;
-        int max = Math.max(0, channel.members.size() * 18 - 98);
-        memberScroll = Math.max(0, Math.min(max, memberScroll - (int) Math.signum(scrollY) * 18));
+        if (!inFrame(ctx, mouseX, mouseY)) return false;
+        memberScroll = clampScroll(memberScroll - (int) Math.signum(scrollY) * ROW_H, channel);
         return true;
     }
 
-    private void drawPanel(DetailContext ctx, GuiGraphics graphics, Channel channel) {
-        int rx = ctx.rightAreaX;
-        int rw = ctx.rightAreaWidth;
-        int panelBottom = ctx.topPos + PANEL_BOTTOM_OFF;
-        Font font = ctx.font;
+    private boolean inFrame(DetailContext ctx, double mouseX, double mouseY) {
+        return mouseX >= ctx.frameX() && mouseX < ctx.frameX() + ctx.frameWidth()
+                && mouseY >= ctx.frameTop() && mouseY < ctx.frameBottom();
+    }
 
-        graphics.fill(rx, ctx.topPos + 48, rx + rw, panelBottom, 0xFF252525);
-        inset(graphics, rx, ctx.topPos + 48, rw, panelBottom - (ctx.topPos + 48));
+    private void drawPanel(DetailContext ctx, GuiGraphics graphics, Channel channel) {
+        hits.clear();
+        drawStatusCard(ctx, graphics, channel);
+        drawEndpointsCard(ctx, graphics, channel);
+    }
+
+    private void drawStatusCard(DetailContext ctx, GuiGraphics graphics, Channel channel) {
+        int fx = ctx.frameX();
+        int fw = ctx.frameWidth();
+        int fy = ctx.frameTop();
+        Font font = ctx.font;
 
         int inputs = 0, outputs = 0;
         for (Member m : channel.members) {
             if (m.role == Role.INPUT) inputs++;
             else if (m.role == Role.OUTPUT) outputs++;
         }
-        graphics.drawString(font, Component.translatable("p2pae2.gui.bridge_status"),
-                rx + 5, ctx.topPos + 52, 0xFFE7C27D, false);
-        Component status;
-        int statusColor;
-        if (inputs == 0 || outputs == 0) {
-            status = Component.translatable("p2pae2.gui.bridge.status.missing_io");
-            statusColor = 0xFFFFC66D;
-        } else {
-            status = Component.translatable("p2pae2.gui.bridge.status.connected");
-            statusColor = 0xFF8FD18F;
-        }
-        graphics.drawString(font, Component.translatable("p2pae2.gui.bridge.status", status),
-                rx + 5, ctx.topPos + 64, statusColor, false);
-        String counts = inputs + " In / " + outputs + " Out";
-        graphics.drawString(font, Component.translatable("p2pae2.gui.bridge.endpoints", counts),
-                rx + 5, ctx.topPos + 76, 0xFFBFBFBF, false);
-        if (inputs > 1 || outputs > 1) {
-            graphics.drawString(font, Component.translatable("p2pae2.gui.bridge.partial"),
-                    rx + rw - font.width(Component.translatable("p2pae2.gui.bridge.partial")) - 5,
-                    ctx.topPos + 76, 0xFF8B8B8B, false);
-        }
 
-        int listTop = ctx.topPos + BODY_TOP_OFF;
-        int listBottom = panelBottom - 1;
-        graphics.fill(rx + 1, listTop, rx + rw - 1, listBottom, 0xFF202020);
-        hits.clear();
-        memberScroll = Math.max(0, Math.min(memberScroll, Math.max(0, channel.members.size() * 18 - 98)));
+        P2PTheme.card(graphics, fx, fy, fw, STATUS_H);
+        P2PTheme.drawStringBold(graphics, font, Component.translatable("p2pae2.gui.bridge_status"),
+                fx + P2PTheme.PAD, fy + 6, P2PTheme.TEXT_PRIMARY);
 
-        graphics.enableScissor(rx + 1, listTop + 1, rx + rw - 1, listBottom);
-        int y = listTop - memberScroll;
+        graphics.drawString(font, Component.translatable("p2pae2.gui.bridge.endpoints",
+                        inputs + " In / " + outputs + " Out"),
+                fx + P2PTheme.PAD, fy + 19, P2PTheme.TEXT_PRIMARY, false);
+
+        P2PTheme.separator(graphics, fx, fy + 32, fw);
+
+        boolean missingIo = inputs == 0 || outputs == 0;
+        Component status = Component.translatable(missingIo
+                ? "p2pae2.gui.bridge.status.missing_io" : "p2pae2.gui.bridge.status.connected");
+        int chipColor = missingIo ? P2PTheme.WARNING : P2PTheme.SUCCESS;
+        int chipW = Math.min(font.width(status) + 10, fw - 2 * P2PTheme.PAD);
+        P2PTheme.chip(graphics, fx + (fw - chipW) / 2, fy + 38, chipW, P2PTheme.PILL_H, chipColor);
+        P2PTheme.drawCentered(graphics, font,
+                Component.literal(trimWidth(font, status.getString(), chipW - 8)),
+                fx + (fw - chipW) / 2, fy + 40, chipW, 0xFFFFFFFF);
+    }
+
+    private void drawEndpointsCard(DetailContext ctx, GuiGraphics graphics, Channel channel) {
+        int fx = ctx.frameX();
+        int fw = ctx.frameWidth();
+        int listTop = ctx.frameTop() + STATUS_H + GAP;
+        int listBottom = ctx.frameBottom();
+        Font font = ctx.font;
+
+        P2PTheme.card(graphics, fx, listTop, fw, listBottom - listTop);
+        int rowsTop = listTop + HEAD_H;
+        int rowsBottom = listBottom - FOOT_H;
+        P2PTheme.drawStringBold(graphics, font,
+                Component.translatable("p2pae2.gui.bridge.endpoints", channel.members.size()),
+                fx + P2PTheme.PAD, listTop + 3, P2PTheme.TEXT_PRIMARY);
+
+        memberScroll = clampScroll(memberScroll, channel);
+        graphics.enableScissor(fx + 1, rowsTop, fx + fw - 1, rowsBottom);
+        int y = rowsTop - memberScroll;
         for (int index = 0; index < channel.members.size(); index++) {
-            drawRow(ctx, graphics, channel.members.get(index), index, y);
-            y += 18;
+            drawRow(ctx, graphics, channel.members.get(index), index, y, rowsTop, rowsBottom);
+            y += ROW_H;
         }
         if (channel.members.isEmpty()) {
             graphics.drawString(font, Component.translatable("p2pae2.gui.bridge.no_endpoints"),
-                    rx + 5, listTop + 25, 0xFF8B8B8B, false);
+                    fx + P2PTheme.PAD, rowsTop + 6, P2PTheme.TEXT_SECOND, false);
         }
         graphics.disableScissor();
+
+        Component foot = Component.translatable("p2pae2.gui.bridge.partial");
+        graphics.drawString(font, foot, fx + fw - P2PTheme.PAD - font.width(foot), rowsBottom + 2,
+                P2PTheme.TEXT_TERT, false);
     }
 
-    private void drawRow(DetailContext ctx, GuiGraphics graphics, Member member, int index, int y) {
-        int rx = ctx.rightAreaX;
-        int rw = ctx.rightAreaWidth;
-        if (y + 18 <= ctx.topPos + BODY_TOP_OFF || y >= ctx.topPos + 181) return;
-        graphics.fill(rx + 2, y, rx + rw - 2, y + 17, 0xFF2B2B2B);
-
-        ItemStack icon = endpointIcon(ctx, member);
-        if (!icon.isEmpty()) graphics.renderItem(icon, rx + 2, y + 1);
-        boolean output = member.role == Role.OUTPUT;
-        button(ctx, graphics, rx + 20, y + 2, 22, 14,
-                Component.literal(output ? "OUT" : "IN"), output ? 0xFF3A7AD9 : 0xFFD93A3A);
+    private void drawRow(DetailContext ctx, GuiGraphics graphics, Member member, int index,
+            int y, int rowsTop, int rowsBottom) {
+        int fx = ctx.frameX();
         Font font = ctx.font;
-        String coords = trimWidth(font, shortKey(ctx, member), 84);
-        graphics.drawString(font, Component.literal(coords), rx + 44, y + 5, 0xFFE0E0E0, false);
-        button(ctx, graphics, rx + rw - 20, y + 2, 16, 14, Component.literal("×"), 0xFF6C3030);
-        hits.add(new RowHit(index, 0, rx + 20, y + 2, 22, 14));
-        hits.add(new RowHit(index, 1, rx + rw - 20, y + 2, 16, 14));
+        if (y + ROW_H <= rowsTop || y >= rowsBottom) return;
+        graphics.fill(fx + P2PTheme.PAD, y + ROW_H, fx + ctx.frameWidth() - P2PTheme.PAD, y + ROW_H + 1,
+                P2PTheme.SEPARATOR);
+
+        int x0 = fx + P2PTheme.PAD;
+        int right = x0 + 228;   // 帧内右边界（244 - 2*8）
+        P2PTheme.drawRoundRect(graphics, x0, y + 1, P2PTheme.WELL, P2PTheme.WELL, P2PTheme.R_SLOT,
+                P2PTheme.FIELD_BG);
+        ItemStack icon = endpointIcon(ctx, member);
+        if (!icon.isEmpty()) graphics.renderItem(icon, x0, y + 1);
+
+        boolean output = member.role == Role.OUTPUT;
+        int badgeX = x0 + 18;
+        P2PTheme.roleBadge(graphics, badgeX, y + 3, !output);
+        P2PTheme.drawCentered(graphics, font, Component.literal(output ? "OUT" : "IN"),
+                badgeX, y + 5, P2PTheme.BADGE_W, 0xFFFFFFFF);
+        hits.add(new RowHit(index, 0, badgeX, y + 2, P2PTheme.BADGE_W, ROW_H - 4));
+
+        String coords = trimWidth(font, shortKey(ctx, member), right - (x0 + 44) - P2PTheme.CIRCLE - 4);
+        graphics.drawString(font, Component.literal(coords), x0 + 44, y + 5, P2PTheme.TEXT_PRIMARY, false);
+
+        P2PTheme.deleteCross(graphics, right - 14, y + 2, false);
+        hits.add(new RowHit(index, 1, right - 14, y + 2, P2PTheme.CIRCLE, P2PTheme.CIRCLE));
+    }
+
+    private int clampScroll(int scroll, Channel channel) {
+        int viewport = DetailContext.FRAME_H - STATUS_H - GAP - HEAD_H - FOOT_H;
+        return Math.max(0, Math.min(Math.max(0, channel.members.size() * ROW_H - viewport), scroll));
     }
 
     private ItemStack endpointIcon(DetailContext ctx, Member member) {
@@ -186,7 +228,7 @@ public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
         Level level = ctx.minecraft.level;
         boolean sameDim = level != null && level.dimension().location().equals(member.dim);
         String face = Component.translatable(
-                "p2pcreate.gui.face." + member.face.name().toLowerCase(java.util.Locale.ROOT)).getString();
+                "p2p_compat.ae2.face." + member.face.name().toLowerCase(java.util.Locale.ROOT)).getString();
         String coords = member.pos.getX() + "," + member.pos.getY() + "," + member.pos.getZ() + "·" + face;
         return sameDim ? coords : member.dim.getPath() + "|" + coords;
     }
@@ -196,21 +238,5 @@ public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
         int cut = value.length();
         while (cut > 1 && font.width(value.substring(0, cut - 1) + "…") > maxWidth) cut--;
         return value.substring(0, Math.max(1, cut - 1)) + "…";
-    }
-
-    private void button(DetailContext ctx, GuiGraphics graphics, int x, int y, int width, int height,
-            Component label, int color) {
-        Font font = ctx.font;
-        graphics.fill(x, y, x + width, y + height, color);
-        graphics.fill(x, y, x + width, y + 1, 0xFF6E625A);
-        graphics.drawString(font, label, x + Math.max(2, (width - font.width(label)) / 2),
-                y + 3, 0xFFE7E0D9, false);
-    }
-
-    private void inset(GuiGraphics graphics, int x, int y, int width, int height) {
-        graphics.fill(x, y, x + width, y + 1, 0xFF6E625A);
-        graphics.fill(x, y, x + 1, y + height, 0xFF6E625A);
-        graphics.fill(x, y + height - 1, x + width, y + height, 0xFF171717);
-        graphics.fill(x + width - 1, y, x + width, y + height, 0xFF171717);
     }
 }

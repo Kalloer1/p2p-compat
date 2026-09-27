@@ -1,6 +1,7 @@
 package com.kalloer1.p2pcreate.client;
 
 import com.kalloer1.p2p.client.screen.P2PFlatButton;
+import com.kalloer1.p2p.client.screen.P2PTheme;
 import com.kalloer1.p2pcreate.bridge.KineticBridgeState;
 import com.kalloer1.p2pcreate.network.P2PCreateNetwork;
 import net.minecraft.client.gui.GuiGraphics;
@@ -11,10 +12,18 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-/** Small numeric editor used by the Create stress channel's per-output RPM button. */
+/**
+ * Small numeric editor used by the Create stress channel's per-output RPM button.
+ *
+ * <p>1.2.0 skin: masked dialog + rounded white card shared with the core prompts
+ * (spec §3 last row); the value row is a stepper (−/+ TINT circles around a FIELD_BG
+ * pill), and the confirm/cancel controls are borderless text buttons.
+ */
 public final class RpmInputScreen extends Screen {
     private static final int W = 280;
     private static final int H = 126;
+    private static final int STEPPER_Y = 36, CTRL_H = 14;
+    private static final int BTN_Y = H - 24;
 
     private final Screen parent;
     private final int channelId;
@@ -40,21 +49,35 @@ public final class RpmInputScreen extends Screen {
     protected void init() {
         leftPos = (width - W) / 2;
         topPos = (height - H) / 2;
-        rpmBox = new EditBox(font, leftPos + 12, topPos + 42, W - 24, 18, Component.literal("RPM"));
+
+        int fieldX = leftPos + P2PTheme.PAD + 22;
+        int fieldW = W - P2PTheme.PAD * 2 - 44;
+        rpmBox = new EditBox(font, fieldX + 4, topPos + STEPPER_Y + 3, fieldW - 8, 12, Component.literal("RPM"));
         rpmBox.setMaxLength(10);
         rpmBox.setFilter(value -> value.matches("[0-9]*"));
         rpmBox.setValue(String.valueOf(Math.round(initial)));
+        rpmBox.setBordered(false);
+        rpmBox.setTextColor(P2PTheme.TEXT_PRIMARY);
         rpmBox.setFocused(true);
         addRenderableWidget(rpmBox);
 
         addRenderableWidget(new P2PFlatButton(Button.builder(Component.literal("-"), b -> step(-1))
-                .bounds(leftPos + 12, topPos + 70, 36, 18)));
+                .bounds(leftPos + P2PTheme.PAD, topPos + STEPPER_Y, CTRL_H, CTRL_H))
+                .setStyle(P2PFlatButton.Style.STEPPER));
         addRenderableWidget(new P2PFlatButton(Button.builder(Component.literal("+"), b -> step(1))
-                .bounds(leftPos + 52, topPos + 70, 36, 18)));
-        addRenderableWidget(new P2PFlatButton(Button.builder(Component.translatable("gui.done"), b -> confirm())
-                .bounds(leftPos + W - 176, topPos + H - 26, 78, 20)));
-        addRenderableWidget(new P2PFlatButton(Button.builder(Component.translatable("gui.cancel"), b -> minecraft.setScreen(parent))
-                .bounds(leftPos + W - 90, topPos + H - 26, 78, 20)));
+                .bounds(leftPos + W - P2PTheme.PAD - CTRL_H, topPos + STEPPER_Y, CTRL_H, CTRL_H))
+                .setStyle(P2PFlatButton.Style.STEPPER));
+
+        textButton(Component.translatable("gui.done"), b -> confirm(), true);
+        textButton(Component.translatable("gui.cancel"), b -> minecraft.setScreen(parent), false);
+    }
+
+    private Button textButton(Component label, Button.OnPress action, boolean trailingRight) {
+        int w = font.width(label) + 12;
+        int x = trailingRight ? leftPos + W - P2PTheme.PAD - w : leftPos + P2PTheme.PAD;
+        P2PFlatButton b = new P2PFlatButton(Button.builder(label, action).bounds(x, topPos + BTN_Y, w, CTRL_H));
+        b.setStyle(P2PFlatButton.Style.TEXT);
+        return addRenderableWidget(b);
     }
 
     private void step(int delta) {
@@ -87,13 +110,11 @@ public final class RpmInputScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, 0x66000000);
-        graphics.fill(leftPos, topPos, leftPos + W, topPos + H, 0xFF252525);
-        graphics.fill(leftPos, topPos, leftPos + W, topPos + 18, 0xFF3B4148);
-        graphics.fill(leftPos, topPos, leftPos + W, topPos + 1, 0xFF6E625A);
-        graphics.drawString(font, Component.translatable("p2pcreate.gui.rpm_title"),
-                leftPos + 7, topPos + 5, 0xFFE7C27D, false);
+        P2PTheme.dialog(graphics, width, height, leftPos, topPos, W, H, font, title);
         graphics.drawString(font, Component.translatable("p2pcreate.gui.rpm_range", 1, Math.round(max)),
-                leftPos + 12, topPos + 28, 0xFFB8BEC4, false);
+                leftPos + P2PTheme.PAD, topPos + 22, P2PTheme.TEXT_SECOND, false);
+        int fieldX = leftPos + P2PTheme.PAD + 22;
+        int fieldW = W - P2PTheme.PAD * 2 - 44;
+        P2PTheme.field(graphics, fieldX, topPos + STEPPER_Y, fieldW, CTRL_H);
     }
 }
