@@ -1,0 +1,107 @@
+modLoader = "javafml"
+loaderVersion = "${loader_version_range}"
+license = "${mod_license}"
+
+[[mods]]
+modId = "${mod_id}"
+version = "${mod_version}"
+displayName = "${mod_name}"
+authors = "${mod_authors}"
+description = '''${mod_description}'''
+
+# 本体：required。宿主 mod 全部 optional——缺宿主时统一入口按 ModList.isLoaded 守卫跳过对应注册。
+[[dependencies.p2p_compat]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${neo_version},)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.p2p_compat]]
+modId = "minecraft"
+type = "required"
+versionRange = "${minecraft_version_range}"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.p2p_compat]]
+modId = "p2p"
+type = "required"
+versionRange = "[1.1.0,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.p2p_compat]]
+modId = "create"
+type = "optional"
+versionRange = "[6.0.0,6.1.0)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.p2p_compat]]
+modId = "mekanism"
+type = "optional"
+versionRange = "[1,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.p2p_compat]]
+modId = "ae2"
+type = "optional"
+versionRange = "[16,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.p2p_compat]]
+modId = "ars_nouveau"
+type = "optional"
+versionRange = "[1,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.p2p_compat]]
+modId = "jei"
+type = "optional"
+versionRange = "[1,)"
+ordering = "AFTER"
+side = "BOTH"
+
+# breaks：旧附属独立 mod 与本合并工程互斥（NeoForge 用 incompatible 型依赖表达 breaks）
+[[dependencies.p2p_compat]]
+modId = "p2pcreate"
+type = "incompatible"
+versionRange = "[,)"
+ordering = "NONE"
+side = "BOTH"
+reason = "Merged into p2p_compat."
+
+[[dependencies.p2p_compat]]
+modId = "p2pmekanism"
+type = "incompatible"
+versionRange = "[,)"
+ordering = "NONE"
+side = "BOTH"
+reason = "Merged into p2p_compat."
+
+[[dependencies.p2p_compat]]
+modId = "p2pae2"
+type = "incompatible"
+versionRange = "[,)"
+ordering = "NONE"
+side = "BOTH"
+reason = "Merged into p2p_compat."
+
+[[dependencies.p2p_compat]]
+modId = "p2parsnouveau"
+type = "incompatible"
+versionRange = "[,)"
+ordering = "NONE"
+side = "BOTH"
+reason = "Merged into p2p_compat."
+
+# 阶段 4 将迁移到新本体 API 后删除这两个 mixin 配置
+[[mixins]]
+config = "p2pcreate.mixins.json"
+
+[[mixins]]
+config = "p2pmekanism.mixins.json"
