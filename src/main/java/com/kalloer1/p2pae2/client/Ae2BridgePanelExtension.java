@@ -232,6 +232,10 @@ public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
         Level level = ctx.minecraft.level;
         if (level != null && level.dimension().location().equals(member.dim)
                 && level.isLoaded(member.pos)) {
+            // AE2 的线缆/智能线缆/隧道都是 cable_bus 上的 part（宿主方块无物品形态）：
+            // 优先取绑定面挂着的 part 的物品作为图标，取不到再走原方块状态路径。
+            ItemStack partIcon = partIcon(level, member.pos, member.face);
+            if (!partIcon.isEmpty()) return partIcon;
             Block block = level.getBlockState(member.pos).getBlock();
             if (block != Blocks.AIR && block.asItem() != Items.AIR) return new ItemStack(block.asItem());
         }
@@ -241,13 +245,36 @@ public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
             if (block != Blocks.AIR && block.asItem() != Items.AIR) return new ItemStack(block.asItem());
             // AE2 的 part/cable 端点绑定在共享的 cable_bus 方块上（无物品形态，槽井会空）：
             // 先试与 blockId 同 id 的物品（AE2 的控制器/量子桥等物品 id 与方块 id 一致），
-            // 再退到 ME 控制器物品兜底，保证非空端点行不出现空井。
+            // 再按介质退默认物品——端点常见形态是 ME P2P 隧道，最后退 ME 控制器物品，
+            // 保证非空端点行不出现空井。
             Item byId = BuiltInRegistries.ITEM.get(member.blockId);
             if (byId != Items.AIR) return new ItemStack(byId);
             if ("ae2".equals(member.blockId.getNamespace())) {
-                Item fallback = BuiltInRegistries.ITEM.get(
+                Item tunnel = BuiltInRegistries.ITEM.get(
+                        ResourceLocation.fromNamespaceAndPath("ae2", "me_p2p_tunnel"));
+                if (tunnel != Items.AIR) return new ItemStack(tunnel);
+                Item controller = BuiltInRegistries.ITEM.get(
                         ResourceLocation.fromNamespaceAndPath("ae2", "controller"));
-                if (fallback != Items.AIR) return new ItemStack(fallback);
+                if (controller != Items.AIR) return new ItemStack(controller);
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /**
+     * 绑定面所挂 AE2 part 的物品图标：端点方块的 BlockEntity 实现 {@code IPartHost}
+     * （CableBusBlockEntity 经 AEMultiBlockEntity 实现，而 AEMultiBlockEntity 同时继承
+     * IInWorldGridNodeHost 与 IPartHost），按面取 {@link IPart} 后经
+     * {@link IPart#getPartItem()}（IPartItem 即 ItemLike）拿物品；普通线缆侧没有 part
+     * 时返回空，交还调用方的兜底链。
+     */
+    private ItemStack partIcon(Level level, net.minecraft.core.BlockPos pos,
+            net.minecraft.core.Direction face) {
+        if (level.getBlockEntity(pos) instanceof appeng.api.parts.IPartHost host) {
+            appeng.api.parts.IPart part = host.getPart(face);
+            if (part != null && part.getPartItem() != null
+                    && part.getPartItem().asItem() != Items.AIR) {
+                return new ItemStack(part.getPartItem().asItem());
             }
         }
         return ItemStack.EMPTY;

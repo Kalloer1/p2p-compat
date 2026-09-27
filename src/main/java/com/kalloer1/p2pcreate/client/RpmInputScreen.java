@@ -58,8 +58,9 @@ public final class RpmInputScreen extends Screen {
         rpmBox.setValue(String.valueOf(Math.round(initial)));
         rpmBox.setBordered(false);
         rpmBox.setTextColor(P2PTheme.TEXT_PRIMARY);
-        rpmBox.setFocused(true);
         addRenderableWidget(rpmBox);
+        // 键盘输入走 Screen 级焦点；只调 rpmBox.setFocused(true) 打不了字。
+        this.setInitialFocus(rpmBox);
 
         addRenderableWidget(new P2PFlatButton(Button.builder(Component.literal("-"), b -> step(-1))
                 .bounds(leftPos + P2PTheme.PAD, topPos + STEPPER_Y, CTRL_H, CTRL_H))

@@ -26,6 +26,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * 气体/化学品过滤页（本体 1.1.0 P4 缝，取代旧 FilterEditorMixin + FilterMixin）。
@@ -108,17 +109,7 @@ public final class GasFilterPage implements FilterPageExtension {
             return true;
         }
         if (!ctx.isItemPage()) return false;
-        mekanism.common.attachments.containers.chemical.AttachedChemicals attached =
-                slot.getItem().get(mekanism.common.registries.MekanismDataComponents.ATTACHED_CHEMICALS.get());
-        if (attached == null) return false;
-        boolean added = false;
-        for (ChemicalStack stored : attached.containers()) {
-            if (stored == null || stored.isEmpty()) continue;
-            int before = chemicalIds.size();
-            addChemical(stored);
-            if (chemicalIds.size() > before) added = true;
-        }
-        return added;
+        return addFromItemStack(slot.getItem());
     }
 
     @Override
@@ -166,6 +157,25 @@ public final class GasFilterPage implements FilterPageExtension {
         chemicalIds.add(id);
         chemicalStacks.add(stack.copyWithAmount(1000));
         c.syncGhost();
+    }
+
+    /**
+     * 从物品堆读取通用机械「附带化学品」组件并逐个加入过滤（气体罐物品的共用入口）。
+     * 点击容器槽位、EMI/JEI 幽灵拖拽三路复用；返回是否有新介质被加入。
+     */
+    public boolean addFromItemStack(@Nullable ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        mekanism.common.attachments.containers.chemical.AttachedChemicals attached =
+                stack.get(mekanism.common.registries.MekanismDataComponents.ATTACHED_CHEMICALS.get());
+        if (attached == null) return false;
+        boolean added = false;
+        for (ChemicalStack stored : attached.containers()) {
+            if (stored == null || stored.isEmpty()) continue;
+            int before = chemicalIds.size();
+            addChemical(stored);
+            if (chemicalIds.size() > before) added = true;
+        }
+        return added;
     }
 
     private void addId(ResourceLocation id) {
