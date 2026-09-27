@@ -13,7 +13,6 @@ import net.neoforged.neoforge.common.NeoForge;
  * 介质 transfer 为 null，桥连接由 {@link BridgeManager} 低频轮询与事件维护。
  */
 public final class CompatAE2 {
-    public static final String MODID = "p2pae2";
     /** 介质 id：ae2:bridge（"bridge" 避免与 AE2 自己的 channel 概念撞词）。 */
     public static final String MEDIUM_ID = "ae2:bridge";
     /** AE2 品牌青（interface/terminal 色调）。 */

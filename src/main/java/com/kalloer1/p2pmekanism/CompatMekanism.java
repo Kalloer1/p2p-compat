@@ -12,7 +12,6 @@ import net.neoforged.bus.api.IEventBus;
  * 注册走本体 1.1.0 唯一契约：附属构造期直调 Mediums.register（幂等）。
  */
 public final class CompatMekanism {
-    public static final String MODID = "p2pmekanism";
     public static final String GAS_ID = "mekanism:gas";
     public static final String HEAT_ID = "mekanism:heat";
 

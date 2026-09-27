@@ -1,5 +1,4 @@
 {
-  "itemGroup.p2pcreate": "P2P Create",
   "p2p.medium.create_stress": "Create Stress",
   "p2pcreate.gui.rpm": "RPM",
   "p2pcreate.gui.clockwise": "CW",
@@ -36,6 +35,8 @@
   "p2pcreate.chat.conflict_shared": "Wireless output of channel '%s' paused: another P2P output already drives this Create network.",
   "p2pcreate.chat.rpm_updated": "P2P Create output configuration updated.",
   "p2p.mekanism.gas": "Gas / Chemical (mB)",
+  "p2p.mekanism.filter.whitelist": "Whitelist",
+  "p2p.mekanism.filter.blacklist": "Blacklist",
   "p2p.mekanism.heat": "Heat (J)",
   "p2p.ae2.bridge": "ME Channel Bridge",
   "p2p.arsnouveau.source": "Source (Ars)",

@@ -9,7 +9,4 @@ import com.simibubi.create.content.kinetics.KineticNetwork;
 public interface KineticNetworkAccessor {
     @Accessor("currentCapacity")
     float p2pcreate$getCurrentCapacity();
-
-    @Accessor("currentStress")
-    float p2pcreate$getCurrentStress();
 }

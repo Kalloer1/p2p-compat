@@ -1,5 +1,6 @@
 package com.kalloer1.p2pmekanism;
 
+import com.kalloer1.p2p.P2P;
 import com.kalloer1.p2p.channel.Channel;
 import com.kalloer1.p2p.channel.Member;
 import com.kalloer1.p2p.channel.Filter;
@@ -10,7 +11,6 @@ import mekanism.api.chemical.ChemicalStack;
 import mekanism.api.chemical.IChemicalHandler;
 import mekanism.common.capabilities.Capabilities;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -31,8 +31,6 @@ import java.util.Set;
  * 返回本轮实际移动的 mB 当量（int），供引擎驱动空闲退避。
  */
 public final class MekGasTransfer {
-    private static final org.apache.logging.log4j.Logger LOG =
-            org.apache.logging.log4j.LogManager.getLogger();
     private static long lastProbeLog = -1000;
 
     public static int transfer(TransferCapabilityCache cache, Channel channel, Map<ResourceLocation, Level> levels,
@@ -151,7 +149,7 @@ public final class MekGasTransfer {
         long now = System.currentTimeMillis();
         if (now - lastProbeLog < 1000) return;
         lastProbeLog = now;
-        LOG.info("[p2pmekanism] gas channel #{}: {}", channel.id, msg);
+        P2P.LOGGER.info("[p2pmekanism] gas channel #{}: {}", channel.id, msg);
     }
 
     // ============================ 均分模式 (SPLIT_EVENLY) ============================

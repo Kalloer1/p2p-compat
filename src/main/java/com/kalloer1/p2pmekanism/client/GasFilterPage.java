@@ -68,9 +68,9 @@ public final class GasFilterPage implements FilterPageExtension {
     public void onInit(FilterPageContext ctx) {
         Rect2i area = ctx.markerGridArea();
         // 本体 init() 每次 resize 重进并 clearControls 重建，扩展控件随之重建（幂等约定）。
-        Button modeButton = Button.builder(Component.literal(modeLabel()), button -> {
+        Button modeButton = Button.builder(Component.translatable(modeLabel()), button -> {
             mode = mode == Filter.Mode.WHITELIST ? Filter.Mode.BLACKLIST : Filter.Mode.WHITELIST;
-            button.setMessage(Component.literal(modeLabel()));
+            button.setMessage(Component.translatable(modeLabel()));
         }).bounds(area.getX(), area.getY() + 102, 158, 16).build();
         ctx.addWidget(modeButton);
     }
@@ -173,6 +173,6 @@ public final class GasFilterPage implements FilterPageExtension {
     }
 
     private String modeLabel() {
-        return mode == Filter.Mode.WHITELIST ? "Whitelist" : "Blacklist";
+        return mode == Filter.Mode.WHITELIST ? "p2p.mekanism.filter.whitelist" : "p2p.mekanism.filter.blacklist";
     }
 }

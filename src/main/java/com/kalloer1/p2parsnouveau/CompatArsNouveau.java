@@ -9,7 +9,6 @@ import net.neoforged.bus.api.IEventBus;
  * Ars Nouveau compat（魔源介质）：仅在 ars_nouveau 模组加载时由统一入口 p2p_compat 注册。
  */
 public final class CompatArsNouveau {
-    public static final String MODID = "p2parsnouveau";
 
     private CompatArsNouveau() {}
 

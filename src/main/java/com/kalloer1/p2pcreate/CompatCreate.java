@@ -40,7 +40,7 @@ public final class CompatCreate {
         P2P.LOGGER.info("[p2pcreate] registered Create stress medium and wireless kinetic bridge");
     }
 
-    /** Client half: only called when create is loaded (P2PCompatClient guard). */
+    /** Client half: only called on the client (FMLEnvironment.dist==Dist.CLIENT) with create loaded. */
     public static void registerClient() {
         ChannelScreenExtensions.register(STRESS_ID, new StressPanelExtension());
     }

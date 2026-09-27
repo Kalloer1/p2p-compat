@@ -216,14 +216,6 @@ public final class KineticBridgeState extends SavedData {
         setDirty();
     }
 
-    public synchronized void removeMember(int channelId, String memberKey) {
-        clearLiveChannel(channelId);
-        outputs.remove(channelId + ":" + memberKey);
-        releaseClaim(channelId, memberKey);
-        pauseReasons.remove(channelId + ":" + memberKey);
-        setDirty();
-    }
-
     public synchronized void pruneChannel(int channelId, Collection<Member> members) {
         clearLiveChannel(channelId);
         String prefix = channelId + ":";

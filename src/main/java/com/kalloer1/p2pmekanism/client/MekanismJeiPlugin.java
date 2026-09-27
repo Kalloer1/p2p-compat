@@ -12,13 +12,15 @@ import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.resources.ResourceLocation;
+import net.neoforged.fml.ModList;
 
 /**
  * JEI bridge for Mekanism's ChemicalStack ingredient type.
  *
  * <p>旧实现依赖 FilterEditorMixin 施加的 ChemicalFilterScreenAccess 接口；现在改读
- * {@link GasFilterPage} 单例的当前编辑器状态。isActiveOn() 先于任何 MekanismJEI 类型
- * 常量求值，页面未激活时不触碰机械动力化学品注册表。
+ * {@link GasFilterPage} 单例的当前编辑器状态。registerGuiHandlers 首行守卫 mekanism
+ * 缺席直接返回（JEI 19.21 已无 @JeiCondition），isActiveOn() 先于任何 MekanismJEI 类型
+ * 常量求值，页面未激活时不触碰通用机械化学品注册表。
  */
 @JeiPlugin
 public final class MekanismJeiPlugin implements IModPlugin {
@@ -32,6 +34,7 @@ public final class MekanismJeiPlugin implements IModPlugin {
 
     @Override
     public void registerGuiHandlers(IGuiHandlerRegistration registration) {
+        if (!ModList.get().isLoaded("mekanism")) return;
         registration.addGhostIngredientHandler(FilterEditor.class, new IGhostIngredientHandler<FilterEditor>() {
             @Override
             public <I> List<Target<I>> getTargetsTyped(FilterEditor screen, ITypedIngredient<I> ingredient,

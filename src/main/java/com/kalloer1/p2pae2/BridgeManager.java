@@ -6,6 +6,7 @@ import appeng.api.networking.IGridNode;
 import appeng.api.networking.IInWorldGridNodeHost;
 import appeng.blockentity.networking.ControllerBlockEntity;
 import appeng.me.helpers.IGridConnectedBlockEntity;
+import com.kalloer1.p2p.P2P;
 import com.kalloer1.p2p.channel.Channel;
 import com.kalloer1.p2p.channel.ChannelManager;
 import com.kalloer1.p2p.channel.Member;
@@ -19,8 +20,6 @@ import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -31,9 +30,11 @@ import java.util.Set;
 /**
  * AE2 频道桥连接管理器（服务端权威）。
  *
- * <p>主模组没有频道变化事件钩子（{@link ChannelManager} 是 SavedData、{@link Channel} 是
- * 纯数据类），所以用低频轮询比对快照：每 20 tick（1 秒）遍历一次 {@code ae2:bridge}
- * 频道，把期望连接集与实际连接集对齐——建新、拆旧、端点变化时重建。见 ADR-0003。
+ * <p>本体 1.1.0 已提供频道事件钩子（ChannelDeletedEvent / ChannelMembersChangedEvent /
+ * ChannelSyncedEvent），但事件只覆盖玩家操作，覆盖不了区块加卸载等拓扑静默变化；本类
+ * 因此仍以低频轮询对齐快照：每 20 tick（1 秒）遍历一次 {@code ae2:bridge} 频道，把期望
+ * 连接集与实际连接集对齐——建新、拆旧、端点变化时重建（幂等，天然兼容事件驱动的缓存失效）。
+ * 见 ADR-0003。
  *
  * <p>一条桥 = 一条远程 {@code IGridConnection}（GridHelper.createConnection，非世界内
  * 连接，跨维度天然支持）。建立后 AE2 网格自管（节点 destroy 时自动断开），本类只负责
@@ -43,7 +44,6 @@ import java.util.Set;
  */
 public final class BridgeManager {
     public static final BridgeManager INSTANCE = new BridgeManager();
-    private static final Logger LOGGER = LogManager.getLogger();
     private static final int SYNC_INTERVAL = 20;   // ticks（1 秒）
 
     /** channelId -> 活跃桥。 */
@@ -134,22 +134,22 @@ public final class BridgeManager {
             outNode = resolveNode(outLevel, out);
             if (inNode == null || outNode == null) return false;
             if (inNode == outNode) {
-                LOGGER.warn("[p2pae2] bridge #{}: both endpoints resolve to the same node; rejected", channelId);
+                P2P.LOGGER.warn("[p2pae2] bridge #{}: both endpoints resolve to the same node; rejected", channelId);
                 return false;
             }
             // ADR-0003 硬限制：两端不能都是控制器（AE2 控制器冲突规则，无法绕过）
             if (inNode.getOwner() instanceof ControllerBlockEntity
                     && outNode.getOwner() instanceof ControllerBlockEntity) {
-                LOGGER.warn("[p2pae2] bridge #{}: both endpoints are ME controllers; rejected "
+                P2P.LOGGER.warn("[p2pae2] bridge #{}: both endpoints are ME controllers; rejected "
                         + "(AE2 controller conflict rule)", channelId);
                 return false;
             }
             try {
                 conn = GridHelper.createConnection(inNode, outNode);
-                LOGGER.info("[p2pae2] bridge #{} connected: {} <-> {}", channelId, inKey, outKey);
+                P2P.LOGGER.info("[p2pae2] bridge #{} connected: {} <-> {}", channelId, inKey, outKey);
                 return true;
             } catch (Exception e) {
-                LOGGER.warn("[p2pae2] bridge #{} connect failed: {}", channelId, e.toString());
+                P2P.LOGGER.warn("[p2pae2] bridge #{} connect failed: {}", channelId, e.toString());
                 return false;
             }
         }

@@ -11,11 +11,7 @@ public final class KineticBridgeMath {
     private KineticBridgeMath() {}
 
     /** Output demand with the fields needed by every P2P distribution mode. */
-    public record OutputDemand(String memberKey, float requestedPower, int priority, double distanceSquared) {
-        public OutputDemand(String memberKey, float requestedPower, int priority) {
-            this(memberKey, requestedPower, priority, 0);
-        }
-    }
+    public record OutputDemand(String memberKey, float requestedPower, int priority, double distanceSquared) {}
 
     public record Allocation(String memberKey, float power) {}
 
@@ -26,11 +22,6 @@ public final class KineticBridgeMath {
      */
     public static float power(float stress, float rpm) {
         return Math.max(0, stress) * Math.abs(rpm);
-    }
-
-    public static List<Allocation> allocate(Channel.Distribution mode, List<OutputDemand> demands,
-            float availablePower) {
-        return allocate(mode, demands, availablePower, 0);
     }
 
     /**
