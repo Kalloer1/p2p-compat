@@ -1,5 +1,7 @@
 package com.kalloer1.p2pmekanism.client;
 
+import java.util.List;
+
 import com.kalloer1.p2p.client.screen.FilterEditor;
 import mekanism.api.chemical.ChemicalStack;
 import mekanism.client.recipe_viewer.jei.MekanismJEI;
@@ -11,13 +13,17 @@ import mezz.jei.api.registration.IGuiHandlerRegistration;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.resources.ResourceLocation;
 
-import java.util.List;
-
-/** JEI bridge for Mekanism's ChemicalStack ingredient type. */
+/**
+ * JEI bridge for Mekanism's ChemicalStack ingredient type.
+ *
+ * <p>旧实现依赖 FilterEditorMixin 施加的 ChemicalFilterScreenAccess 接口；现在改读
+ * {@link GasFilterPage} 单例的当前编辑器状态。isActiveOn() 先于任何 MekanismJEI 类型
+ * 常量求值，页面未激活时不触碰机械动力化学品注册表。
+ */
 @JeiPlugin
 public final class MekanismJeiPlugin implements IModPlugin {
     private static final ResourceLocation UID =
-            ResourceLocation.fromNamespaceAndPath("p2pmekanism", "jei_plugin");
+            ResourceLocation.fromNamespaceAndPath("p2p_compat", "jei_plugin");
 
     @Override
     public ResourceLocation getPluginUid() {
@@ -30,24 +36,21 @@ public final class MekanismJeiPlugin implements IModPlugin {
             @Override
             public <I> List<Target<I>> getTargetsTyped(FilterEditor screen, ITypedIngredient<I> ingredient,
                                                         boolean doStart) {
-                if (!(screen instanceof ChemicalFilterScreenAccess access)
-                        || !access.p2pmekanism$isGasFilter()
-                        || !access.p2pmekanism$isItemPage()
-                        || ingredient.getType() != MekanismJEI.TYPE_CHEMICAL) {
-                    return List.of();
-                }
+                GasFilterPage page = GasFilterPage.INSTANCE;
+                if (!page.isActiveOn(screen)) return List.of();
+                if (ingredient.getType() != MekanismJEI.TYPE_CHEMICAL) return List.of();
                 ChemicalStack chemical = ingredient.getIngredient(MekanismJEI.TYPE_CHEMICAL).orElse(null);
                 if (chemical == null || chemical.isEmpty()) return List.of();
                 @SuppressWarnings("unchecked")
                 Target<I> target = (Target<I>) new Target<ChemicalStack>() {
                     @Override
                     public Rect2i getArea() {
-                        return access.p2pmekanism$getMarkerArea();
+                        return page.markerArea();
                     }
 
                     @Override
                     public void accept(ChemicalStack value) {
-                        access.p2pmekanism$addChemical(value);
+                        page.addChemical(value);
                     }
                 };
                 return List.of(target);
@@ -59,4 +62,3 @@ public final class MekanismJeiPlugin implements IModPlugin {
         });
     }
 }
-

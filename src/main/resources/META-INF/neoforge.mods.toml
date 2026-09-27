@@ -99,9 +99,6 @@ ordering = "NONE"
 side = "BOTH"
 reason = "Merged into p2p_compat."
 
-# 阶段 4 将迁移到新本体 API 后删除这两个 mixin 配置
+# 阶段4退役后仅存 Create 宿主 mixin 配置（KineticBlockEntity/KineticNetwork 目标，全部宿主类）
 [[mixins]]
 config = "p2pcreate.mixins.json"
-
-[[mixins]]
-config = "p2pmekanism.mixins.json"

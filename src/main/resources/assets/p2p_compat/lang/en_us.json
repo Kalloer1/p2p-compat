@@ -35,8 +35,15 @@
   "p2pcreate.chat.conflict_speed": "Some outputs of channel '%s' paused: conflicting target RPM on the same Create network (only the highest-priority output is powered).",
   "p2pcreate.chat.conflict_shared": "Wireless output of channel '%s' paused: another P2P output already drives this Create network.",
   "p2pcreate.chat.rpm_updated": "P2P Create output configuration updated.",
-  "p2p.mekanism.gas": "Gas / Chemical",
-  "p2p.mekanism.heat": "Heat",
+  "p2p.mekanism.gas": "Gas / Chemical (mB)",
+  "p2p.mekanism.heat": "Heat (J)",
   "p2p.ae2.bridge": "ME Channel Bridge",
-  "p2p.arsnouveau.source": "Source (Ars)"
+  "p2p.arsnouveau.source": "Source (Ars)",
+  "p2pae2.gui.bridge_status": "Quantum Bridge",
+  "p2pae2.gui.bridge.status": "Status: %s",
+  "p2pae2.gui.bridge.status.missing_io": "needs at least one input and one output",
+  "p2pae2.gui.bridge.status.connected": "bridged (auto-syncs every second)",
+  "p2pae2.gui.bridge.endpoints": "Endpoints: %s",
+  "p2pae2.gui.bridge.partial": "Only the first input/output pair is bridged",
+  "p2pae2.gui.bridge.no_endpoints": "No endpoints yet"
 }

@@ -4,15 +4,10 @@
   "package": "com.kalloer1.p2pcreate.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "ChannelActionC2SPacketMixin",
     "KineticBlockEntityAccessor",
     "KineticNetworkAccessor",
     "KineticNetworkMixin",
-    "KineticBlockEntityMixin",
-    "P2PChannelManagerMixin"
-  ],
-  "client": [
-    "client.ChannelScreenMixin"
+    "KineticBlockEntityMixin"
   ],
   "injectors": {
     "defaultRequire": 0

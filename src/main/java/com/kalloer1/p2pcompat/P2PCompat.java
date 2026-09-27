@@ -9,6 +9,8 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.api.distmarker.Dist;
 
 /**
  * 统一附属入口：合并 p2pcreate / p2pmekanism / p2pae2 / p2parsnouveau 四个旧附属。
@@ -25,7 +27,16 @@ public final class P2PCompat {
         if (ModList.get().isLoaded("mekanism")) registerMekanism(modEventBus);
         if (ModList.get().isLoaded("ae2")) registerAE2(modEventBus);
         if (ModList.get().isLoaded("ars_nouveau")) registerArsNouveau(modEventBus);
+        // Client half: registerClient* bodies touch GUI classes, but the JVM resolves those
+        // lazily per call site, so a dedicated server never loads them.
+        if (FMLEnvironment.dist == Dist.CLIENT) registerClientExtensions();
         P2P.LOGGER.info("[p2p_compat] unified compat addon loaded");
+    }
+
+    private static void registerClientExtensions() {
+        if (ModList.get().isLoaded("create")) CompatCreate.registerClient();
+        if (ModList.get().isLoaded("mekanism")) CompatMekanism.registerClient();
+        if (ModList.get().isLoaded("ae2")) CompatAE2.registerClient();
     }
 
     // Each register* is a separate class-load boundary: CompatXxx (and transitively the host's
