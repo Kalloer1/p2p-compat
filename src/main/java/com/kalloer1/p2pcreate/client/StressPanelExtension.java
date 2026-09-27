@@ -167,7 +167,13 @@ public final class StressPanelExtension implements ChannelScreenExtension {
         List<Member> outputs = members(channel, Role.OUTPUT);
         float inputSupply = 0;
         boolean missingInput = false;
+        boolean infiniteInput = false;
         for (Member member : inputs) {
+            // 创造马达供能的输入网络：服务端标记为无限供给，汇总显示 "∞ SU"。
+            if (KineticBridgeState.isClientInfiniteSupply(channel.id, member.key())) {
+                infiniteInput = true;
+                continue;
+            }
             float value = inputSupply(ctx, member);
             if (value < 0) missingInput = true;
             else inputSupply += value;
@@ -188,7 +194,7 @@ public final class StressPanelExtension implements ChannelScreenExtension {
                 fx + P2PTheme.PAD, fy + 6, P2PTheme.TEXT_PRIMARY);
 
         graphics.drawString(font, Component.translatable("p2pcreate.gui.input_available",
-                        formatStress(inputSupply, missingInput)),
+                        formatStress(inputSupply, missingInput, infiniteInput)),
                 fx + P2PTheme.PAD, fy + 19, P2PTheme.TEXT_PRIMARY, false);
         graphics.drawString(font, Component.translatable("p2pcreate.gui.output_demand",
                         formatStress(outputDemand, missingOutput)),
@@ -267,7 +273,7 @@ public final class StressPanelExtension implements ChannelScreenExtension {
                 badgeX, y + 5, P2PTheme.BADGE_W, 0xFFFFFFFF);
         actionHits.add(new ActionHit(memberIndex, ActionKind.ROLE, badgeX, y + 2, P2PTheme.BADGE_W, ROW_H - 4));
 
-        String key = trimWidth(font, shortKey(ctx, member), 46);
+        String key = trimWidth(font, shortKey(ctx, member), 44);
         graphics.drawString(font, Component.literal(key), x0 + 44, y + 5, P2PTheme.TEXT_PRIMARY, false);
 
         // Same predicate the server bridge uses to resolve endpoints: a row that fails it can
@@ -278,6 +284,10 @@ public final class StressPanelExtension implements ChannelScreenExtension {
             if (warning != null) {
                 drawRightAligned(graphics, font, Component.literal("!" + warning.getString()),
                         right - 22, y + 5, P2PTheme.DANGER);
+            } else if (KineticBridgeState.isClientInfiniteSupply(channel.id, member.key())) {
+                drawRightAligned(graphics, font,
+                        Component.translatable("p2pcreate.gui.supply", formatStress(0, false, true)),
+                        right - 22, y + 5, P2PTheme.WARNING);
             } else {
                 float supplied = inputSupply(ctx, member);
                 drawRightAligned(graphics, font,
@@ -289,33 +299,34 @@ public final class StressPanelExtension implements ChannelScreenExtension {
                     KineticBridgeState.maxRotationSpeed());
             boolean marked = warning != null || config.paused();
             graphics.drawString(font, Component.literal(Math.round(config.rpm()) + " " + unit()),
-                    x0 + 94, y + 5, marked ? P2PTheme.TEXT_TERT : P2PTheme.WARNING, false);
+                    x0 + 90, y + 5, marked ? P2PTheme.TEXT_TERT : P2PTheme.WARNING, false);
             Component dirLabel = warning != null ? warning : config.paused()
                     ? reasonLabel(config.reason())
                     : Component.translatable(config.reverse()
                             ? "p2pcreate.gui.counter_clockwise" : "p2pcreate.gui.clockwise");
             // The direction cell doubles as the toggle control and carries the row's warning /
-            // pause reason when the output cannot run.
-            int dirW = 36;
-            P2PTheme.pillBackground(graphics, x0 + 126, y + 2, dirW, P2PTheme.PILL_H, false, true);
+            // pause reason when the output cannot run. 44px（可用 40）放得下 zh 三字/英文短词，
+            // 配合 lang 缩短后的原因文案（被驱动/冲突/暂停、Local/Clash/In use/Halt）不再截断。
+            int dirW = 44;
+            P2PTheme.pillBackground(graphics, x0 + 124, y + 2, dirW, P2PTheme.PILL_H, false, true);
             P2PTheme.drawCentered(graphics, font,
                     Component.literal(trimWidth(font, (marked ? "!" : "") + dirLabel.getString(), dirW - 4)),
-                    x0 + 126, y + 4, dirW, marked ? P2PTheme.WARNING : P2PTheme.TEXT_PRIMARY);
-            actionHits.add(new ActionHit(memberIndex, ActionKind.DIRECTION, x0 + 126, y + 2, dirW, P2PTheme.PILL_H));
+                    x0 + 124, y + 4, dirW, marked ? P2PTheme.WARNING : P2PTheme.TEXT_PRIMARY);
+            actionHits.add(new ActionHit(memberIndex, ActionKind.DIRECTION, x0 + 124, y + 2, dirW, P2PTheme.PILL_H));
             if (channel.distribution == Channel.Distribution.PRIORITY) {
                 // Keep the per-output priority editor compact so RPM, direction, and delete
                 // remain available in the same row.
                 int pW = 16;
-                P2PTheme.pillBackground(graphics, x0 + 164, y + 2, pW, P2PTheme.PILL_H, false, true);
+                P2PTheme.pillBackground(graphics, x0 + 168, y + 2, pW, P2PTheme.PILL_H, false, true);
                 P2PTheme.drawCentered(graphics, font, Component.literal("P" + member.priority),
-                        x0 + 164, y + 4, pW, P2PTheme.TEXT_PRIMARY);
-                actionHits.add(new ActionHit(memberIndex, ActionKind.PRIORITY, x0 + 164, y + 2, pW, P2PTheme.PILL_H));
+                        x0 + 168, y + 4, pW, P2PTheme.TEXT_PRIMARY);
+                actionHits.add(new ActionHit(memberIndex, ActionKind.PRIORITY, x0 + 168, y + 2, pW, P2PTheme.PILL_H));
             }
             int rpmW = 26;
-            P2PTheme.chip(graphics, x0 + 182, y + 2, rpmW, P2PTheme.PILL_H, P2PTheme.TINT);
+            P2PTheme.chip(graphics, x0 + 186, y + 2, rpmW, P2PTheme.PILL_H, P2PTheme.TINT);
             P2PTheme.drawCentered(graphics, font, Component.translatable("p2pcreate.gui.rpm"),
-                    x0 + 182, y + 4, rpmW, 0xFFFFFFFF);
-            actionHits.add(new ActionHit(memberIndex, ActionKind.RPM, x0 + 182, y + 2, rpmW, P2PTheme.PILL_H));
+                    x0 + 186, y + 4, rpmW, 0xFFFFFFFF);
+            actionHits.add(new ActionHit(memberIndex, ActionKind.RPM, x0 + 186, y + 2, rpmW, P2PTheme.PILL_H));
         }
         P2PTheme.deleteCross(graphics, right - 14, y + 2, false);
         actionHits.add(new ActionHit(memberIndex, ActionKind.DELETE, right - 14, y + 2, P2PTheme.CIRCLE,
@@ -421,6 +432,12 @@ public final class StressPanelExtension implements ChannelScreenExtension {
     }
 
     private String formatStress(float value, boolean missing) {
+        return formatStress(value, missing, false);
+    }
+
+    /** infinite=true（创造马达无限供给）时显示 "∞ SU"，不再展示幽灵网络的同步容量。 */
+    private String formatStress(float value, boolean missing, boolean infinite) {
+        if (infinite) return "∞" + unit();
         return missing ? "—" : formatNumber(value) + unit();
     }
 

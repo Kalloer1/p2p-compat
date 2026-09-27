@@ -1,29 +1,38 @@
 package com.kalloer1.p2pae2;
 
 import appeng.api.networking.GridHelper;
+import appeng.api.networking.IGrid;
 import appeng.api.networking.IGridConnection;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.IInWorldGridNodeHost;
+import appeng.api.networking.pathing.ChannelMode;
+import appeng.api.networking.pathing.ControllerState;
+import appeng.api.networking.pathing.IPathingService;
 import appeng.blockentity.networking.ControllerBlockEntity;
 import appeng.me.helpers.IGridConnectedBlockEntity;
 import com.kalloer1.p2p.P2P;
+import com.kalloer1.p2p.api.ChannelSyncedEvent;
 import com.kalloer1.p2p.channel.Channel;
 import com.kalloer1.p2p.channel.ChannelManager;
 import com.kalloer1.p2p.channel.Member;
 import com.kalloer1.p2p.channel.Role;
+import com.kalloer1.p2pae2.network.P2PAe2Network;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,6 +57,8 @@ public final class BridgeManager {
 
     /** channelId -> 活跃桥。 */
     private final Map<Integer, ActiveBridge> active = new HashMap<>();
+    /** 上次广播的频道用量快照（差量广播用）。 */
+    private List<P2PAe2Network.ChannelStat> lastChannelStats = List.of();
 
     private MinecraftServer server;
     private int tick;
@@ -78,6 +89,57 @@ public final class BridgeManager {
                 it.remove();
             }
         }
+        syncChannelStats();
+    }
+
+    /**
+     * 每秒对齐一次桥所合并 ME 网络的频道用量并差量广播。桥是一条远程 {@code IGridConnection}，
+     * 两端网格在 AE2 里合并成一个 IGrid，所以从任一端节点（优先输入端）的
+     * {@code getGrid().getPathingService()} 取网络级数据：
+     * <ul>
+     *   <li>已用：{@link IPathingService#getUsedChannels()}（网络内 REQUIRE_CHANNEL 节点的已用频道数）</li>
+     *   <li>总量（控制器在线）：控制器数 × 32 × 模式系数 —— 控制器节点带
+     *       {@code GridFlags.DENSE_CAPACITY}，对应 {@code GridNode.getMaxChannels()} 的
+     *       32 × cableCapacityFactor（即每个控制器 32 频道的来源）</li>
+     *   <li>总量（无控制器 ad-hoc）：{@link ChannelMode#getAdHocNetworkChannels()}（默认 8）</li>
+     *   <li>ChannelMode=INFINITE：max = -1，客户端显示 ∞</li>
+     * </ul>
+     */
+    private void syncChannelStats() {
+        List<P2PAe2Network.ChannelStat> stats = new ArrayList<>();
+        for (ActiveBridge ab : active.values()) {
+            IGridNode node = ab.inNode != null ? ab.inNode : ab.outNode;
+            IGrid grid = node != null ? node.getGrid() : null;
+            if (grid == null || grid.isEmpty()) continue;
+            IPathingService pathing = grid.getPathingService();
+            ChannelMode mode = pathing.getChannelMode();
+            int used = pathing.getUsedChannels();
+            int max;
+            if (mode == ChannelMode.INFINITE) {
+                max = -1;
+            } else if (pathing.getControllerState() == ControllerState.CONTROLLER_ONLINE) {
+                int controllers = grid.getMachines(ControllerBlockEntity.class).size();
+                max = controllers * 32 * mode.getCableCapacityFactor();
+            } else {
+                max = mode.getAdHocNetworkChannels();
+            }
+            stats.add(new P2PAe2Network.ChannelStat(ab.channelId, used, max));
+        }
+        if (stats.equals(lastChannelStats)) return;
+        stats.sort(java.util.Comparator.comparingInt(P2PAe2Network.ChannelStat::channelId));
+        lastChannelStats = stats;
+        if (server != null) P2PAe2Network.broadcast(server, stats);
+    }
+
+    /**
+     * 进服/打开界面时的按玩家补发：差量广播只在快照变化时发，静止网络的用量
+     * 不会主动到达新登录的客户端，导致频道行一直省略。ChannelSyncedEvent 在
+     * 登录与每次快照时触发，借它把当前全量快照单发给该玩家。
+     */
+    @SubscribeEvent
+    public void onChannelSynced(ChannelSyncedEvent event) {
+        if (lastChannelStats.isEmpty()) return;
+        P2PAe2Network.sendTo(event.player, lastChannelStats);
     }
 
     private void syncChannel(Channel ch) {

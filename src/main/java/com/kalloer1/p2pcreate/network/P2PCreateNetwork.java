@@ -40,6 +40,9 @@ public final class P2PCreateNetwork {
         registrar.playToClient(SyncOutputConfigsPayload.TYPE, SyncOutputConfigsPayload.CODEC,
                 (payload, context) -> context.enqueueWork(() ->
                         KineticBridgeState.replaceClientOutputConfigs(payload.entries())));
+        // 1.2.0 新增：无限供给（创造马达）标记同步。旧 payload 类与 wire 格式不动。
+        registrar.playToClient(SyncInfiniteSupplyPayload.TYPE, SyncInfiniteSupplyPayload.CODEC,
+                SyncInfiniteSupplyPayload::handle);
     }
 
     public static void syncTo(ServerPlayer player) {
@@ -56,6 +59,9 @@ public final class P2PCreateNetwork {
             }
         }
         PacketDistributor.sendToPlayer(player, new SyncOutputConfigsPayload(entries));
+        // 无限供给标记搭同一次同步下发（打开频道界面 / 登录 / 频道变更都会走到这里）。
+        PacketDistributor.sendToPlayer(player,
+                new SyncInfiniteSupplyPayload(List.copyOf(state.getInfiniteSupplyKeys())));
     }
 
     private static void handleSetOutput(SetOutputConfigPayload payload,

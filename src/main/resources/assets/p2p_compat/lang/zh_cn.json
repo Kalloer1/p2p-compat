@@ -21,6 +21,8 @@
   "p2pcreate.gui.status.paused": "部分输出已暂停",
   "p2pcreate.gui.status.connected": "已连接",
   "p2pcreate.gui.no_endpoints": "暂无端点",
+  "p2pcreate.gui.endpoints": "端点（%s）",
+  "p2pcreate.gui.rpm_hint": "点击「转速」芯片设置输出转速",
   "p2pcreate.gui.supply": "提供：%s",
   "p2pcreate.gui.row.unloaded": "未加载",
   "p2pcreate.gui.row.not_kinetic": "非动能",
@@ -28,7 +30,7 @@
   "p2pcreate.gui.row.idle": "未转动",
   "p2pcreate.gui.reason.real_source": "本地源",
   "p2pcreate.gui.reason.speed_conflict": "冲突",
-  "p2pcreate.gui.reason.shared": "已被驱动",
+  "p2pcreate.gui.reason.shared": "被驱动",
   "p2pcreate.gui.reason.paused": "暂停",
   "p2pcreate.gui.face.down": "下",
   "p2pcreate.gui.face.up": "上",
@@ -54,6 +56,8 @@
   "p2pae2.gui.bridge.status.missing_io": "需要至少一个输入与一个输出",
   "p2pae2.gui.bridge.status.connected": "已桥接（每秒自动同步）",
   "p2pae2.gui.bridge.endpoints": "端点：%s",
+  "p2pae2.gui.bridge.channels": "频道：已用 %s / 总 %s（剩 %s）",
+  "p2pae2.gui.bridge.channels.infinite": "频道：已用 %s / ∞",
   "p2pae2.gui.bridge.partial": "仅第一对输入/输出参与桥接",
   "p2pae2.gui.bridge.no_endpoints": "暂无端点"
 }

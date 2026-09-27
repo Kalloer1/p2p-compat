@@ -46,8 +46,8 @@ configurations { runtimeClasspath.extendsFrom localRuntime }
 
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
-    // P2P core 1.2.0 (flatDir libs/p2p-1.2.0.jar)
-    implementation "blank:p2p:1.2.0"
+    // P2P core 1.3.0 (flatDir libs/p2p-1.3.0.jar)
+    implementation "blank:p2p:1.3.0"
     // Host mods (all optional at runtime; guarded by ModList.isLoaded in P2PCompat)
     implementation files('libs/Create-6.0.11.jar')
     implementation files('libs/Mekanism-1.21.1-10.7.19.85.jar')

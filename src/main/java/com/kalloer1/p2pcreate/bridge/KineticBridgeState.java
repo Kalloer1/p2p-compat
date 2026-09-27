@@ -23,6 +23,7 @@ import com.kalloer1.p2p.channel.Role;
 import com.kalloer1.p2pcreate.mixin.KineticNetworkAccessor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -52,10 +53,23 @@ public final class KineticBridgeState extends SavedData {
     /** Grace period before an output that stopped being fed is taken apart again. */
     private static final int CLAIM_EXPIRY_TICKS = 40;
 
+    /** Create 创造马达的块注册 id：比 instanceof 更稳，也是"可豁免的真实动力源"的判定依据。 */
+    private static final ResourceLocation CREATIVE_MOTOR_ID =
+            ResourceLocation.fromNamespaceAndPath("create", "creative_motor");
+    /**
+     * 无限供给（输入网络含创造马达）时的可用功率替身。不能直接传 Float.MAX_VALUE：
+     * 分配器里会做减法和整除，取 MAX_VALUE/8 保证运算不溢出成 NaN/Infinity。
+     */
+    private static final float INFINITE_POWER = Float.MAX_VALUE / 8f;
+
     private static final Map<String, ClientOutputView> CLIENT_OUTPUTS = new HashMap<>();
+    /** 客户端镜像：哪些「channelId:memberKey」输入端点所在网络由创造马达供能（无限供给）。 */
+    private static final Set<String> CLIENT_INFINITE_SUPPLY = new HashSet<>();
     private final Map<String, OutputConfig> outputs = new HashMap<>();
     private final Map<Long, WirelessSource> claims = new HashMap<>();
     private final Map<String, String> pauseReasons = new HashMap<>();
+    /** 服务端：本 tick 内判定为无限供给的「channelId:memberKey」输入端点（随桥 tick 重建）。 */
+    private final Set<String> infiniteSupply = new HashSet<>();
     private final Map<Long, List<VirtualKineticContribution>> live = new HashMap<>();
     private final Map<Long, Float> inputStress = new HashMap<>();
     private final Map<Long, Float> outputSpeed = new HashMap<>();
@@ -200,6 +214,22 @@ public final class KineticBridgeState extends SavedData {
         }
     }
 
+    /** 客户端：该输入端点所在网络是否为创造马达无限供给（面板显示 "∞ SU" 用）。 */
+    public static boolean isClientInfiniteSupply(int channelId, String memberKey) {
+        return CLIENT_INFINITE_SUPPLY.contains(channelId + ":" + memberKey);
+    }
+
+    /** 客户端：整表替换无限供给镜像（服务端全量快照驱动，兼容缺项）。 */
+    public static void replaceClientInfiniteSupply(Collection<String> keys) {
+        CLIENT_INFINITE_SUPPLY.clear();
+        CLIENT_INFINITE_SUPPLY.addAll(keys);
+    }
+
+    /** 服务端：当前判定为无限供给的全部端点键快照（用于搭车同步）。 */
+    public synchronized Set<String> getInfiniteSupplyKeys() {
+        return new HashSet<>(infiniteSupply);
+    }
+
     public synchronized void setOutputConfig(int channelId, String memberKey, float rpm, boolean reverse, float maxRpm) {
         outputs.put(channelId + ":" + memberKey,
                 clamp(new OutputConfig(rpm, reverse), maxRpm));
@@ -239,6 +269,7 @@ public final class KineticBridgeState extends SavedData {
         live.values().forEach(entries -> entries.removeIf(c -> c.channelId() == channelId));
         live.entrySet().removeIf(entry -> entry.getValue().isEmpty());
         outputSpeed.clear();
+        infiniteSupply.removeIf(k -> k.startsWith(channelId + ":"));
         for (List<VirtualKineticContribution> entries : live.values()) {
             for (VirtualKineticContribution contribution : entries) {
                 outputSpeed.putIfAbsent(contribution.networkId(), contribution.targetSpeed());
@@ -276,6 +307,7 @@ public final class KineticBridgeState extends SavedData {
         }
         String prefix = channel.id + ":";
         pauseReasons.keySet().removeIf(k -> k.startsWith(prefix));
+        infiniteSupply.removeIf(k -> k.startsWith(prefix));
 
         List<InputEndpoint> validInputs = new ArrayList<>();
         for (Member member : inputs) {
@@ -288,6 +320,16 @@ public final class KineticBridgeState extends SavedData {
             KineticBlockEntity be = resolveKinetic(levels.get(member.dim), member, Role.OUTPUT);
             if (be != null)
                 targets.add(new OutputEndpoint(be, member, getOutputConfig(channel.id, member, maxRotationSpeed())));
+        }
+        // 输入网络含创造马达 ⇒ 该网络视为无限供给。放在端点早退之前：输出端全部
+        // 暂停/缺失时客户端面板也要能显示 "∞ SU"。
+        Set<Long> infiniteNetworks = new HashSet<>();
+        for (InputEndpoint input : validInputs) {
+            KineticNetwork network = input.be.getOrCreateNetwork();
+            if (networkHasCreativeMotor(network)) {
+                infiniteNetworks.add(network.id == null ? 0L : network.id);
+                infiniteSupply.add(prefix + input.member.key());
+            }
         }
         if (validInputs.isEmpty() || targets.isEmpty()) {
             claims.values().forEach(claim -> { if (claim.channelId == channel.id) claim.released = true; });
@@ -331,18 +373,27 @@ public final class KineticBridgeState extends SavedData {
         if (drives.isEmpty()) return 0;
 
         float availablePower = 0;
+        boolean infiniteSupplyNetwork = false;
         Set<Long> countedNetworks = new HashSet<>();
         for (InputEndpoint input : validInputs) {
             KineticNetwork network = input.be.getOrCreateNetwork();
             long networkId = network.id == null ? 0 : network.id;
             // Create's capacity sum is already scaled by each generator's speed, so a network
             // contributes its stored capacity once - multiplying by rpm again would inflate it.
-            if (countedNetworks.add(networkId)) availablePower += Math.max(0,
-                    ((KineticNetworkAccessor) network).p2pcreate$getCurrentCapacity());
+            if (countedNetworks.add(networkId)) {
+                if (infiniteNetworks.contains(networkId)) {
+                    // 创造马达网络：容量上限不再参与分配，所有输出按需取满。
+                    infiniteSupplyNetwork = true;
+                } else {
+                    availablePower += Math.max(0,
+                            ((KineticNetworkAccessor) network).p2pcreate$getCurrentCapacity());
+                }
+            }
         }
+        if (infiniteSupplyNetwork) availablePower = INFINITE_POWER;
         float requestedPower = 0;
         for (KineticBridgeMath.OutputDemand demand : demands) requestedPower += demand.requestedPower();
-        if (availablePower <= 0 && tick % 20 == 0) {
+        if (availablePower <= 0 && !infiniteSupplyNetwork && tick % 20 == 0) {
             StringBuilder detail = new StringBuilder();
             for (InputEndpoint input : validInputs) {
                 KineticNetwork n = input.be.getOrCreateNetwork();
@@ -386,7 +437,12 @@ public final class KineticBridgeState extends SavedData {
         for (KineticBlockEntity source : network.sources.keySet()) {
             if (!isPresent(source)) continue;
             WirelessSource claim = claims.get(source.getBlockPos().asLong());
-            if (claim == null) return "real_source";
+            if (claim == null) {
+                // 创造马达是"可豁免"的真实动力源：输出与之共存不判 real_source（无限供给场景）。
+                // shared（另一个 P2P 输出在驱动）与 speed_conflict 的暂停语义不受影响。
+                if (isCreativeMotor(source)) continue;
+                return "real_source";
+            }
             if (!claim.owns(channelId, memberKey)) return "shared";
         }
         Float claimed = outputSpeed.get(network.id == null ? 0L : network.id);
@@ -398,6 +454,19 @@ public final class KineticBridgeState extends SavedData {
     private static boolean isPresent(KineticBlockEntity be) {
         Level level = be.getLevel();
         return level != null && level.getBlockEntity(be.getBlockPos()) == be;
+    }
+
+    /** 创造马达判定：块注册 id == create:creative_motor（比 BE 类型判断更稳）。 */
+    private static boolean isCreativeMotor(KineticBlockEntity be) {
+        return CREATIVE_MOTOR_ID.equals(BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock()));
+    }
+
+    /** 输入网络的真实动力源里是否有创造马达（有 ⇒ 无限供给）。 */
+    private static boolean networkHasCreativeMotor(KineticNetwork network) {
+        for (KineticBlockEntity source : network.sources.keySet()) {
+            if (isPresent(source) && isCreativeMotor(source)) return true;
+        }
+        return false;
     }
 
     /** Turn the resolved output block into the generator of its own train. */

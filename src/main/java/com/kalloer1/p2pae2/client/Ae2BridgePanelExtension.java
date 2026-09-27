@@ -12,10 +12,13 @@ import com.kalloer1.p2p.channel.Member;
 import com.kalloer1.p2p.channel.Role;
 import com.kalloer1.p2p.client.screen.P2PTheme;
 import com.kalloer1.p2p.network.ChannelActionC2SPacket;
+import com.kalloer1.p2pae2.network.P2PAe2Network;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -26,8 +29,9 @@ import net.minecraft.world.level.block.Blocks;
  * ae2:bridge 频道详情面板（本体 1.1.0 P3 缝）。replacesDefaultPanel=true：
  * 隐藏通用速率/Tick/节流控件，右侧改画量子桥状态与端点 IN/OUT 概览。
  *
- * <p>BridgeManager 是服务端权威、无同步包，客户端面板按同一选取规则（第一输入 +
- * 第一输出，见 BridgeManager.syncChannel）从 Channel 成员推导状态，不直连服务端数据。
+ * <p>BridgeManager 是服务端权威；1.2.0 起频道用量经新增的 {@code p2pae2:sync_bridge_channels}
+ * 每秒差量推送（P2PAe2Network），状态卡据此显示 ME 网络频道数，其余状态仍按同一选取规则
+ * （第一输入 + 第一输出，见 BridgeManager.syncChannel）从 Channel 成员推导，不直连服务端数据。
  * 纯客户端类：只在 CompatAE2.registerClient()（宿主 ae2 在场时）注册。
  *
  * <p>1.2.0 iOS 几何契约：独占 {@link DetailContext} 的 244x160 接管帧，按
@@ -35,8 +39,11 @@ import net.minecraft.world.level.block.Blocks;
  * （旧 0xFF252525 系暗色与私有 bevel 已删除），面名使用自有键 {@code p2p_compat.ae2.face.*}。
  */
 public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
-    /** 状态卡高（标题 / 端点计数 / 分隔线 / 状态 pill），与 Stress 面板一致。 */
-    private static final int STATUS_H = 56;
+    /**
+     * 状态卡高（标题 / 端点计数 / 频道用量 / 分隔线 / 状态 pill）。
+     * 1.2.0 从 56 加高到 64 容纳新增的频道行，列表卡相应下移压缩。
+     */
+    private static final int STATUS_H = 64;
     /** 两段卡片间距。 */
     private static final int GAP = 4;
     /** 列表卡内的分区头高。 */
@@ -131,17 +138,28 @@ public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
                         inputs + " In / " + outputs + " Out"),
                 fx + P2PTheme.PAD, fy + 19, P2PTheme.TEXT_PRIMARY, false);
 
-        P2PTheme.separator(graphics, fx, fy + 32, fw);
+        // 频道用量（服务端随 p2pae2:sync_bridge_channels 每秒推送；未同步过则省略该行）。
+        P2PAe2Network.ChannelStat stat = P2PAe2Network.clientStat(channel.id);
+        if (stat != null) {
+            Component channels = stat.maxChannels() < 0
+                    ? Component.translatable("p2pae2.gui.bridge.channels.infinite", stat.usedChannels())
+                    : Component.translatable("p2pae2.gui.bridge.channels",
+                            stat.usedChannels(), stat.maxChannels(),
+                            Math.max(0, stat.maxChannels() - stat.usedChannels()));
+            graphics.drawString(font, channels, fx + P2PTheme.PAD, fy + 30, P2PTheme.TEXT_SECOND, false);
+        }
+
+        P2PTheme.separator(graphics, fx, fy + 40, fw);
 
         boolean missingIo = inputs == 0 || outputs == 0;
         Component status = Component.translatable(missingIo
                 ? "p2pae2.gui.bridge.status.missing_io" : "p2pae2.gui.bridge.status.connected");
         int chipColor = missingIo ? P2PTheme.WARNING : P2PTheme.SUCCESS;
         int chipW = Math.min(font.width(status) + 10, fw - 2 * P2PTheme.PAD);
-        P2PTheme.chip(graphics, fx + (fw - chipW) / 2, fy + 38, chipW, P2PTheme.PILL_H, chipColor);
+        P2PTheme.chip(graphics, fx + (fw - chipW) / 2, fy + 46, chipW, P2PTheme.PILL_H, chipColor);
         P2PTheme.drawCentered(graphics, font,
                 Component.literal(trimWidth(font, status.getString(), chipW - 8)),
-                fx + (fw - chipW) / 2, fy + 40, chipW, 0xFFFFFFFF);
+                fx + (fw - chipW) / 2, fy + 48, chipW, 0xFFFFFFFF);
     }
 
     private void drawEndpointsCard(DetailContext ctx, GuiGraphics graphics, Channel channel) {
@@ -218,8 +236,19 @@ public final class Ae2BridgePanelExtension implements ChannelScreenExtension {
             if (block != Blocks.AIR && block.asItem() != Items.AIR) return new ItemStack(block.asItem());
         }
         if (member.blockId != null) {
+            // BuiltInRegistries.BLOCK is defaulted: unknown ids return AIR rather than null.
             Block block = BuiltInRegistries.BLOCK.get(member.blockId);
             if (block != Blocks.AIR && block.asItem() != Items.AIR) return new ItemStack(block.asItem());
+            // AE2 的 part/cable 端点绑定在共享的 cable_bus 方块上（无物品形态，槽井会空）：
+            // 先试与 blockId 同 id 的物品（AE2 的控制器/量子桥等物品 id 与方块 id 一致），
+            // 再退到 ME 控制器物品兜底，保证非空端点行不出现空井。
+            Item byId = BuiltInRegistries.ITEM.get(member.blockId);
+            if (byId != Items.AIR) return new ItemStack(byId);
+            if ("ae2".equals(member.blockId.getNamespace())) {
+                Item fallback = BuiltInRegistries.ITEM.get(
+                        ResourceLocation.fromNamespaceAndPath("ae2", "controller"));
+                if (fallback != Items.AIR) return new ItemStack(fallback);
+            }
         }
         return ItemStack.EMPTY;
     }
