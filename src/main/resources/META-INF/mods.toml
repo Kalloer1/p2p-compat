@@ -1,0 +1,72 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+description='''${mod_description}'''
+
+[[dependencies.${mod_id}]]
+    modId="forge"
+    mandatory=true
+    versionRange="${forge_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# 本体：required。宿主 mod 全部 optional——缺宿主时统一入口按 ModList.isLoaded 守卫跳过对应注册。
+[[dependencies.${mod_id}]]
+    modId="p2p"
+    mandatory=true
+    versionRange="[1.2.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="mekanism"
+    mandatory=false
+    versionRange="[10.4,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="ae2"
+    mandatory=false
+    versionRange="[15,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="ars_nouveau"
+    mandatory=false
+    versionRange="[1,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="botania"
+    mandatory=false
+    versionRange="[1,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="jei"
+    mandatory=false
+    versionRange="[1,)"
+    ordering="AFTER"
+    side="CLIENT"
+
+# 注意：本模组与旧独立附属（p2pmekanism / p2pae2 / p2parsnouveau / p2pbotania）互斥。
+# Forge 1.20.1 的 mods.toml 没有 breaks/incompatible 语义，无法在此声明互斥——
+# 必须手动从 mods 目录移除旧附属；同时装会造成介质重复注册（Mediums.register 幂等，
+# 先注册者保留，但旧附属的 @Mod 构造顺序不保证，行为未定义）。
