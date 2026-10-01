@@ -4,6 +4,7 @@ import com.kalloer1.p2p.P2P;
 import com.kalloer1.p2pae2.CompatAE2;
 import com.kalloer1.p2parsnouveau.CompatArsNouveau;
 import com.kalloer1.p2pbotania.CompatBotania;
+import com.kalloer1.p2pcreate.CompatCreate;
 import com.kalloer1.p2pmekanism.CompatMekanism;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.ModList;
@@ -11,7 +12,8 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 
 /**
- * 统一附属入口：合并 p2pmekanism / p2pae2 / p2parsnouveau / p2pbotania 四个旧 1.20.1 附属。
+ * 统一附属入口：合并 p2pmekanism / p2pae2 / p2parsnouveau / p2pbotania 四个旧 1.20.1 附属，
+ * 并包含 1.21.1 整合版移植回 1.20.1 的 Create 应力模块（p2pcreate，无 1.20.1 独立版）。
  *
  * <p>每个附属在宿主模组在场时才注册（介质、自有网络包、事件监听）。守卫放在调用点，
  * 保证缺宿主时对应 CompatXxx 类根本不被加载（其静态初始化会解析宿主类的方法引用）。
@@ -30,6 +32,7 @@ public final class P2PCompat {
         if (ModList.get().isLoaded("ae2")) registerAE2();
         if (ModList.get().isLoaded("ars_nouveau")) registerArsNouveau();
         if (ModList.get().isLoaded("botania")) registerBotania();
+        if (ModList.get().isLoaded("create")) registerCreate();
         // Client half: registerClientExtensions bodies touch GUI classes, but the JVM resolves those
         // lazily per call site, so a dedicated server never loads them.
         if (FMLEnvironment.dist == Dist.CLIENT) registerClientExtensions();
@@ -39,6 +42,7 @@ public final class P2PCompat {
     private static void registerClientExtensions() {
         if (ModList.get().isLoaded("mekanism")) CompatMekanism.registerClient();
         if (ModList.get().isLoaded("ae2")) CompatAE2.registerClient();
+        if (ModList.get().isLoaded("create")) CompatCreate.registerClient();
     }
 
     // Each register* is a separate class-load boundary: CompatXxx (and transitively the host's
@@ -58,6 +62,10 @@ public final class P2PCompat {
 
     private static void registerBotania() {
         CompatBotania.register();
+    }
+
+    private static void registerCreate() {
+        CompatCreate.register();
     }
 
     /**

@@ -12,7 +12,6 @@ import com.kalloer1.p2p.medium.Mediums;
  * 介质 id / 颜色 / lang 键与独立版保持一致。
  */
 public final class CompatBotania {
-    public static final String MODID = "p2pbotania";
 
     private CompatBotania() {}
 

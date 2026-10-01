@@ -60,6 +60,21 @@ description='''${mod_description}'''
     side="BOTH"
 
 [[dependencies.${mod_id}]]
+    modId="botania"
+    mandatory=false
+    versionRange="[1,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Create 应力模块（p2pcreate，1.21.1 整合版移植回 1.20.1；Create 6.0.x 线）
+[[dependencies.${mod_id}]]
+    modId="create"
+    mandatory=false
+    versionRange="[6.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
     modId="jei"
     mandatory=false
     versionRange="[1,)"

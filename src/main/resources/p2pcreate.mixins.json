@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.kalloer1.p2pcreate.mixin",
+  "refmap": "p2p_compat.refmap.json",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "KineticBlockEntityAccessor",
+    "KineticNetworkAccessor",
+    "KineticNetworkMixin",
+    "KineticBlockEntityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
