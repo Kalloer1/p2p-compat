@@ -39,10 +39,20 @@ public final class MekanismEmiPlugin implements EmiPlugin {
             @Override
             public boolean dropStack(FilterEditor screen, EmiIngredient ingredient, int mx, int my) {
                 GasFilterPage page = GasFilterPage.INSTANCE;
-                if (!page.isActiveOn(screen)) return false;
+                // TODO(诊断日志，复测后摘除)：定位 EMI 拖入不生效的运行时环节
+                com.kalloer1.p2p.P2P.LOGGER.info(
+                        "[p2p_compat] EMI dropStack: screen={} ingredient={} mx={} my={}",
+                        screen.getClass().getSimpleName(), ingredient, mx, my);
+                if (!page.isActiveOn(screen)) {
+                    com.kalloer1.p2p.P2P.LOGGER.info("[p2p_compat] EMI drop: inactive (gas page not active on this screen)");
+                    return false;
+                }
                 Rect2i grid = page.markerArea();
-                if (mx < grid.getX() || mx >= grid.getX() + grid.getWidth()
-                        || my < grid.getY() || my >= grid.getY() + grid.getHeight()) return false;
+                boolean hit = mx >= grid.getX() && mx < grid.getX() + grid.getWidth()
+                        && my >= grid.getY() && my < grid.getY() + grid.getHeight();
+                com.kalloer1.p2p.P2P.LOGGER.info(
+                        "[p2p_compat] EMI drop: grid={} hit={}", grid, hit);
+                if (!hit) return false;
                 for (EmiStack s : ingredient.getEmiStacks()) {
                     ItemStack item = s.getItemStack();
                     if (item != null && !item.isEmpty() && page.addFromItemStack(item)) {

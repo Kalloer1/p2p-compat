@@ -178,10 +178,15 @@ public final class GasFilterPage implements FilterPageExtension {
     public boolean addFromItemStack(@Nullable ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
         IGasHandler attached = stack.getCapability(Capabilities.GAS_HANDLER).orElse(null);
+        // TODO(诊断日志，复测后摘除)
+        com.kalloer1.p2p.P2P.LOGGER.info("[p2p_compat] addFromItemStack: item={} gasHandler={}",
+                stack.getItem(), attached == null ? "null" : "ok");
         if (attached == null) return false;
         boolean added = false;
         for (int tank = 0; tank < attached.getTanks(); tank++) {
             GasStack stored = attached.getChemicalInTank(tank);
+            com.kalloer1.p2p.P2P.LOGGER.info("[p2p_compat] addFromItemStack: tank {} = {}",
+                    tank, stored == null ? "null" : stored.getTypeRegistryName());
             if (stored == null || stored.isEmpty()) continue;
             int before = chemicalIds.size();
             addChemical(stored);
