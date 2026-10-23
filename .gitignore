@@ -7,3 +7,5 @@ out/
 .classpath
 .project
 .settings/
+# 宿主模组开发 jar（许可限制再分发，不入库；本地编译用）
+libs/
